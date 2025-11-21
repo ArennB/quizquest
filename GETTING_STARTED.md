@@ -49,7 +49,7 @@ Make sure you have:
 
 ### 1.3 Get Firebase Configuration
 
-1. **Ask the team lead** (Da'karri/Arenn) for the Firebase configuration
+1. **Ask the team lead** (Arenn) for the Firebase configuration
 2. **Create a file** called `.env.local` in the project root folder
 3. **Copy and paste** the Firebase config they give you into that file
 
