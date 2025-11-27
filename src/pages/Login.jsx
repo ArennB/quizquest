@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { useAuth } from "../context/AuthContext";
 import { auth } from '../firebase';
 
 function Login() {
@@ -8,7 +9,28 @@ function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+
+  // Redirect logged-in users
+  if (currentUser) return <Navigate to="/browse" replace />;
+
+  // Friendly error messages
+  const formatError = (code) => {
+    switch (code) {
+      case "auth/user-not-found":
+        return "No account found with that email.";
+      case "auth/wrong-password":
+        return "Incorrect password. Try again.";
+      case "auth/invalid-email":
+        return "Please enter a valid email.";
+      case "auth/popup-closed-by-user":
+        return "Google login was cancelled.";
+      default:
+        return "Login failed. Please try again.";
+    }
+  };
 
   const handleEmailLogin = async (e) => {
     e.preventDefault();
@@ -19,7 +41,7 @@ function Login() {
       await signInWithEmailAndPassword(auth, email, password);
       navigate('/browse');
     } catch (err) {
-      setError(err.message);
+      setError(formatError(err.code));
     } finally {
       setLoading(false);
     }
@@ -34,7 +56,7 @@ function Login() {
       await signInWithPopup(auth, provider);
       navigate('/browse');
     } catch (err) {
-      setError(err.message);
+      setError(formatError(err.code));
     } finally {
       setLoading(false);
     }
@@ -71,6 +93,14 @@ function Login() {
               placeholder="Enter your password"
             />
           </div>
+
+          <button
+            type="button"
+            className="forgot-password"
+            onClick={() => navigate("/reset-password")}
+          >
+            Forgot password?
+          </button>
           
           <button type="submit" className="btn btn-primary" disabled={loading}>
             {loading ? 'Logging in...' : 'Login'}

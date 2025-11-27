@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
+
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -8,7 +9,11 @@ import Browse from './pages/Browse';
 import Play from './pages/Play';
 import Create from './pages/Create';
 import Leaderboard from './pages/Leaderboard';
+import Profile from './pages/Profile';
+
+import ProtectedRoute from './components/ProtectedRoute';
 import './App.css';
+import { useAuth } from './context/AuthContext';
 
 function App() {
   return (
@@ -18,13 +23,68 @@ function App() {
           <Navbar />
           <main className="main-content">
             <Routes>
+
+              {/* Public Routes */}
               <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/signup" element={<Signup />} />
+
+              {/* Redirect logged-in users AWAY from login/signup */}
+              <Route
+                path="/login"
+                element={
+                  <RedirectIfLoggedIn>
+                    <Login />
+                  </RedirectIfLoggedIn>
+                }
+              />
+
+              <Route
+                path="/signup"
+                element={
+                  <RedirectIfLoggedIn>
+                    <Signup />
+                  </RedirectIfLoggedIn>
+                }
+              />
+
               <Route path="/browse" element={<Browse />} />
-              <Route path="/play/:id" element={<Play />} />
-              <Route path="/create" element={<Create />} />
-              <Route path="/leaderboard" element={<Leaderboard />} />
+
+              {/* Protected Routes */}
+              <Route
+                path="/play/:id"
+                element={
+                  <ProtectedRoute>
+                    <Play />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
+                    <Create />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/leaderboard"
+                element={
+                  <ProtectedRoute>
+                    <Leaderboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+
             </Routes>
           </main>
         </div>
@@ -33,4 +93,13 @@ function App() {
   );
 }
 
+function RedirectIfLoggedIn({ children }) {
+  const { currentUser } = useAuth();
+  if (currentUser) {
+    return <Navigate to="/browse" replace />;
+  }
+  return children;
+}
+
 export default App;
+

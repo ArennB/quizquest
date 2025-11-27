@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import axios from 'axios';
+import "./Play.css";
+
 
 const API_URL = 'http://localhost:8000/api';
 
