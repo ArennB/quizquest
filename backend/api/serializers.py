@@ -49,3 +49,15 @@ class AttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attempt
         fields = '__all__'
+        read_only_fields = ["score", "total_time", "completed_at"]
+
+    def create(self, validated_data):
+        answers = validated_data.get("answers", [])
+
+        score = sum(1 for ans in answers if ans.get("correct") is True)
+        total_time = sum(ans.get("time", 0) for ans in answers)
+
+        validated_data["score"] = score
+        validated_data["total_time"] = total_time
+
+        return super().create(validated_data)
