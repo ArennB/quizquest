@@ -19,25 +19,67 @@ class ChallengeViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def submit_attempt(self, request, pk=None):
-        """Submit quiz attempt"""
+        """Submit quiz attempt and use server-side grading (creates an Attempt)"""
         challenge = self.get_object()
-        answers = request.data.get('answers', [])
-        
-        # Simple score calculation
-        correct = sum(1 for ans in answers if ans.get('isCorrect'))
-        total = len(answers)
-        score = (correct / total * 100) if total > 0 else 0
-        
-        # Calculate XP
-        xp = int(score * 2)
-        
-        return Response({
-            'score': score,
-            'correct_answers': correct,
-            'total_questions': total,
-            'xp_earned': xp
-        })
+        # Expect client to send 'submitted_answers' (list of {question_id, text, table_entries, time_spent})
+        submitted_answers = request.data.get('submitted_answers') or request.data.get('answers', [])
+        user_uid = request.data.get('user_uid') or request.data.get('user', None)
+        email = request.data.get('email', '')
+        display_name = request.data.get('display_name', 'Anonymous')
 
+        # Build attempt payload for serializer
+        attempt_payload = {
+            'challenge': challenge.id,
+            'user_uid': user_uid,
+            'submitted_answers': submitted_answers,
+            # optional: include a started_at/completed client timestamp or let serializer set times
+            'total_time': request.data.get('total_time', 0),
+        }
+
+        serializer = AttemptSerializer(data=attempt_payload)
+        serializer.is_valid(raise_exception=True)
+        attempt = serializer.save()
+
+        # Compute XP same way as AttemptViewSet.create would
+        difficulty_multipliers = {
+            'easy': 1.0,
+            'medium': 1.5,
+            'hard': 2.0
+        }
+        multiplier = difficulty_multipliers.get(challenge.difficulty, 1.0)
+        base_xp = int(attempt.score * multiplier)
+        previous_attempts = Attempt.objects.filter(user_uid=user_uid, challenge=challenge).exclude(id=attempt.id).exists()
+        first_time_bonus = 0 if previous_attempts else 50
+        perfect_bonus = 25 if attempt.score >= 100 else 0
+        total_xp = base_xp + first_time_bonus + perfect_bonus
+
+        # Update / create user profile
+        if user_uid:
+            user_profile, created = UserProfile.objects.get_or_create(
+                firebase_uid=user_uid,
+                defaults={'email': email, 'display_name': display_name}
+            )
+            user_profile.total_xp += total_xp
+            user_profile.challenges_completed += 1
+            user_profile.save()
+
+        # Attach XP breakdown to response
+        response_data = {
+            'attempt_id': attempt.id,
+            'score': attempt.score,
+            'total_time': attempt.total_time,
+            'xp_earned': total_xp,
+            'xp_breakdown': {
+                'base_xp': base_xp,
+                'difficulty_multiplier': multiplier,
+                'first_time_bonus': first_time_bonus,
+                'perfect_bonus': perfect_bonus,
+                'total_xp': total_xp
+            },
+            'graded_answers': attempt.answers
+        }
+        return Response(response_data, status=status.HTTP_201_CREATED)
+    
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
@@ -48,58 +90,61 @@ class AttemptViewSet(viewsets.ModelViewSet):
     serializer_class = AttemptSerializer
     
     def create(self, request, *args, **kwargs):
-        """Create attempt and calculate XP"""
-        user_uid = request.data.get('user_uid')
-        challenge_id = request.data.get('challenge')
-        score = request.data.get('score', 0)
-        
+        """Create attempt and calculate XP (use serializer to perform server-side grading)"""
+        # Use submitted_answers if present; serializer will grade and fill score/xp_earned
+        submitted_answers = request.data.get('submitted_answers') or request.data.get('answers', [])
+        request_data = request.data.copy()
+        request_data['submitted_answers'] = submitted_answers
+
+        serializer = self.get_serializer(data=request_data)
+        serializer.is_valid(raise_exception=True)
+        attempt = serializer.save()
+
         # Get challenge for difficulty multiplier
-        challenge = Challenge.objects.get(id=challenge_id)
-        
-        # Calculate XP
+        challenge = attempt.challenge
+
         difficulty_multipliers = {
             'easy': 1.0,
             'medium': 1.5,
             'hard': 2.0
         }
         multiplier = difficulty_multipliers.get(challenge.difficulty, 1.0)
-        base_xp = int(score * multiplier)
-        
-        # Check if first attempt at this challenge
+        base_xp = int(attempt.score * multiplier)
+
+        # Check if first attempt at this challenge (excluding current)
+        user_uid = attempt.user_uid
         previous_attempts = Attempt.objects.filter(
             user_uid=user_uid,
             challenge=challenge
-        ).exists()
-        
+        ).exclude(id=attempt.id).exists()
         first_time_bonus = 0 if previous_attempts else 50
-        perfect_bonus = 25 if score >= 100 else 0
-        
+        perfect_bonus = 25 if attempt.score >= 100 else 0
+
         total_xp = base_xp + first_time_bonus + perfect_bonus
-        
-        # Create the attempt
-        response = super().create(request, *args, **kwargs)
-        
+
         # Update or create user profile
-        user_profile, created = UserProfile.objects.get_or_create(
-            firebase_uid=user_uid,
-            defaults={
-                'email': request.data.get('email', ''),
-                'display_name': request.data.get('display_name', 'Anonymous')
-            }
-        )
-        user_profile.total_xp += total_xp
-        user_profile.challenges_completed += 1
-        user_profile.save()
-        
-        # Add XP info to response
-        response.data['xp_earned'] = total_xp
-        response.data['xp_breakdown'] = {
+        if user_uid:
+            user_profile, created = UserProfile.objects.get_or_create(
+                firebase_uid=user_uid,
+                defaults={
+                    'email': request.data.get('email', ''),
+                    'display_name': request.data.get('display_name', 'Anonymous')
+                }
+            )
+            user_profile.total_xp += total_xp
+            user_profile.challenges_completed += 1
+            user_profile.save()
+
+        # Prepare response (serializer.data would reflect saved Attempt)
+        data = serializer.data
+        data['xp_earned'] = total_xp
+        data['xp_breakdown'] = {
             'base_xp': base_xp,
             'difficulty_multiplier': multiplier,
             'first_time_bonus': first_time_bonus,
             'perfect_bonus': perfect_bonus,
             'total_xp': total_xp
         }
-        response.data['new_total_xp'] = user_profile.total_xp
-        
-        return response
+        data['new_total_xp'] = user_profile.total_xp if user_uid else None
+
+        return Response(data, status=status.HTTP_201_CREATED)

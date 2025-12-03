@@ -17,7 +17,14 @@ class Challenge(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     is_published = models.BooleanField(default=True)
     play_count = models.IntegerField(default=0)
-    questions = models.JSONField(default=list)  # Store questions as JSON
+
+    # Single JSONField to hold question list (multiple_choice / short_answer / forced_recall)
+    questions = models.JSONField(
+        null=True,
+        blank=True,
+        default=list,
+        help_text="List of question objects (type, text, acceptable_answers, table_entries, etc.)"
+    )
     
     def __str__(self):
         return self.title
@@ -34,11 +41,32 @@ class UserProfile(models.Model):
 
 class Attempt(models.Model):
     challenge = models.ForeignKey(Challenge, on_delete=models.CASCADE)
-    user_uid = models.CharField(max_length=128)  # Firebase UID
-    score = models.FloatField()
-    completed_at = models.DateTimeField(auto_now_add=True)
-    total_time = models.IntegerField()  # seconds
-    answers = models.JSONField(default=list)
+    user_uid = models.CharField(max_length=128, null=True, blank=True)  # Firebase UID (nullable for anonymous)
     
+    # Raw submitted answers (as sent from client) for auditing/replay
+    submitted_answers = models.JSONField(
+        null=True,
+        blank=True,
+        default=list,
+        help_text="Raw submitted answers from client (used for auditing / replay)"
+    )
+
+    # Server-graded answers/results (is_correct, points_earned, table_results, etc.)
+    answers = models.JSONField(
+        null=True,
+        blank=True,
+        default=list,
+        help_text="Graded answers/results saved by server"
+    )
+
+    # Numeric tracking fields (set by server-side grading)
+    score = models.IntegerField(default=0, help_text="Score as percent (0-100)")
+    total_time = models.IntegerField(default=0, help_text="Total time in seconds")
+    xp_earned = models.IntegerField(default=0)
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
     def __str__(self):
-        return f"{self.user_uid} - {self.challenge.title}"
+        return f"{self.user_uid or 'anon'} - {self.challenge.title}"

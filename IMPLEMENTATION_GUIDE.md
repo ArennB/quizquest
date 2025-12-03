@@ -9,6 +9,7 @@
 6. [Team Task Distribution](#6-team-task-distribution)
 7. [Development Workflow](#7-development-workflow)
 8. [Testing Strategy](#8-testing-strategy)
+9. [Running the app (local & deploy)](#9-running-the-app-local--deploy)
 
 ---
 
@@ -730,86 +731,48 @@ Test on:
 
 ---
 
-## 9. Quick Start Checklist
+## 9. Running the app (local & deploy)
 
-### For Each Team Member:
+### Prerequisites
+- Node.js v18+ and npm (or yarn)
+- Firebase CLI: `npm install -g firebase-tools`
+- A filled `.env.local` (copy from `.env.example` and add your Firebase values)
 
-- [ ] Clone repository
-- [ ] Install Node.js (v18+)
-- [ ] Run `npm install`
-- [ ] Get Firebase config from team lead
-- [ ] Create `.env.local` file
-- [ ] Run `npm run dev`
-- [ ] App loads at `http://localhost:5173`
-- [ ] Create your feature branch
-- [ ] Read the PRD
-- [ ] Review your assigned tasks
-- [ ] Join team communication channel
-
-### For Project Lead (One-time):
-
-- [ ] Create Firebase project
-- [ ] Enable Authentication
-- [ ] Enable Firestore
-- [ ] Share Firebase config with team
-- [ ] Set up GitHub repository
-- [ ] Add team members as collaborators
-- [ ] Create project board/issues
-- [ ] Set up team communication (Slack/Discord)
-
----
-
-## 10. Common Commands
-
+### Local development (fast start)
 ```bash
-# Development
-npm run dev          # Start dev server
-npm run build        # Build for production
-npm run preview      # Preview production build
-npm run lint         # Run ESLint
-
-# Git
-git status           # Check status
-git branch           # List branches
-git checkout -b      # Create new branch
-git pull origin main # Get latest changes
-git push             # Push changes
-
-# Firebase
-firebase login       # Login to Firebase
-firebase deploy      # Deploy to hosting
-firebase emulators:start  # Local Firebase testing
+# from project root
+npm install
+cp .env.example .env.local      # then fill values in .env.local
+npm run dev                     # start Vite dev server (http://localhost:5173)
+# or if using yarn
+# yarn
+# yarn dev
 ```
 
----
+### Using Firebase emulators (optional, recommended for safe testing)
+1. Start emulators for Auth/Firestore:
+```bash
+firebase emulators:start
+```
+2. Ensure your local Firebase config (firebase.json) points to emulator ports, or use the SDK to connect to emulators when NODE_ENV is development.
 
-## 11. Resources & Documentation
+### Build & deploy
+```bash
+# Build production bundle
+npm run build
 
-- **React Docs:** https://react.dev
-- **Firebase Docs:** https://firebase.google.com/docs
-- **Vite Docs:** https://vitejs.dev
-- **Tailwind CSS:** https://tailwindcss.com
-- **React Router:** https://reactrouter.com
-- **Firestore Data Modeling:** https://firebase.google.com/docs/firestore/data-model
+# Preview production locally
+npm run preview
 
----
+# Deploy to Firebase Hosting (ensure firebase project is selected)
+firebase deploy --only hosting
+```
 
-## 12. Troubleshooting
-
-### Firebase Not Connecting
-- Check `.env.local` file exists and has correct values
-- Restart dev server after changing `.env.local`
-- Verify Firebase config in console matches `.env.local`
-
-### Build Errors
-- Delete `node_modules` and run `npm install` again
-- Clear cache: `rm -rf node_modules/.vite`
-- Check Node version: `node --version` (should be 18+)
-
-### Authentication Issues
-- Check Firebase Authentication is enabled in console
-- Verify auth providers are configured
-- Check browser console for errors
+### Common issues & quick fixes
+- Env changes not applied: restart dev server after editing `.env.local`.
+- Port conflicts: change Vite port in `vite.config.js` or kill the process using the port.
+- Broken deps: `rm -rf node_modules && npm install`.
+- Firebase auth/firestore not working: confirm `.env.local` values match the Firebase Console and that the correct project is selected (`firebase use <projectId>`).
 
 ---
 
