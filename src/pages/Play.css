@@ -1,3 +1,48 @@
+/* ==== FORCED RECALL TABLE ==== */
+.forced-recall-table-container {
+  margin: 24px 0 16px 0;
+}
+.forced-recall-title {
+  font-size: 1.1rem;
+  margin-bottom: 6px;
+  color: #ffd700;
+}
+.forced-recall-desc {
+  font-size: 1rem;
+  margin-bottom: 10px;
+  color: #ccc;
+}
+.forced-recall-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #181818;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.forced-recall-table th, .forced-recall-table td {
+  border: 1px solid #333;
+  padding: 10px 12px;
+  text-align: left;
+}
+.forced-recall-table th {
+  background: #232323;
+  color: #fff;
+}
+.forced-recall-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #222;
+  color: #fff;
+  font-size: 1rem;
+  transition: border 0.2s;
+}
+.forced-recall-input:focus {
+  border-color: #4caf50;
+  outline: none;
+}
 /* ==== GENERAL PAGE LAYOUT ==== */
 .play-page {
   max-width: 800px;

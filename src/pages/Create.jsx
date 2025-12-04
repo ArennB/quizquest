@@ -12,7 +12,7 @@ function Create() {
   const [theme, setTheme] = useState('General');
   const [difficulty, setDifficulty] = useState('medium');
   const [questions, setQuestions] = useState([
-    { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0, question_id: `q_${Date.now()}` }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,6 +20,27 @@ function Create() {
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
     newQuestions[index][field] = value;
+    // If type changes, reset fields
+    if (field === 'type') {
+      if (value === 'multiple_choice') {
+        newQuestions[index] = {
+          type: 'multiple_choice',
+          question_text: '',
+          options: ['', '', '', ''],
+          correct_answer: 0,
+          question_id: newQuestions[index].question_id || `q_${Date.now()}`
+        };
+      } else if (value === 'forced_recall') {
+        newQuestions[index] = {
+          type: 'forced_recall',
+          text: '',
+          table_title: '',
+          description: '',
+          table_entries: [],
+          question_id: newQuestions[index].question_id || `q_${Date.now()}`
+        };
+      }
+    }
     setQuestions(newQuestions);
   };
 
@@ -32,7 +53,7 @@ function Create() {
   const addQuestion = () => {
     setQuestions([
       ...questions,
-      { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0, question_id: `q_${Date.now()}` }
     ]);
   };
 
@@ -191,38 +212,86 @@ function Create() {
               </div>
 
               <div className="form-group">
-                <label>Question Text</label>
-                <input
-                  type="text"
-                  value={question.question_text}
-                  onChange={(e) => handleQuestionChange(qIndex, 'question_text', e.target.value)}
-                  required
-                  placeholder="Enter your question"
-                />
+                <label>Type</label>
+                <select value={question.type} onChange={e => handleQuestionChange(qIndex, 'type', e.target.value)}>
+                  <option value="multiple_choice">Multiple Choice</option>
+                  <option value="forced_recall">Forced Recall</option>
+                </select>
               </div>
 
-              <div className="options-grid">
-                {question.options.map((option, oIndex) => (
-                  <div key={oIndex} className="option-input">
-                    <label>
-                      <input
-                        type="radio"
-                        name={`correct-${qIndex}`}
-                        checked={question.correct_answer === oIndex}
-                        onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
-                      />
-                      Option {String.fromCharCode(65 + oIndex)}
-                    </label>
+              {question.type === 'multiple_choice' ? (
+                <>
+                  <div className="form-group">
+                    <label>Question Text</label>
                     <input
                       type="text"
-                      value={option}
-                      onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
+                      value={question.question_text}
+                      onChange={(e) => handleQuestionChange(qIndex, 'question_text', e.target.value)}
                       required
-                      placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
+                      placeholder="Enter your question"
                     />
                   </div>
-                ))}
-              </div>
+                  <div className="options-grid">
+                    {question.options.map((option, oIndex) => (
+                      <div key={oIndex} className="option-input">
+                        <label>
+                          <input
+                            type="radio"
+                            name={`correct-${qIndex}`}
+                            checked={question.correct_answer === oIndex}
+                            onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
+                          />
+                          Option {String.fromCharCode(65 + oIndex)}
+                        </label>
+                        <input
+                          type="text"
+                          value={option}
+                          onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
+                          required
+                          placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Question Text</label>
+                    <input
+                      type="text"
+                      value={question.text}
+                      onChange={e => handleQuestionChange(qIndex, 'text', e.target.value)}
+                      required
+                      placeholder="Enter your forced-recall question"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Table Title</label>
+                    <input
+                      type="text"
+                      value={question.table_title || ''}
+                      onChange={e => handleQuestionChange(qIndex, 'table_title', e.target.value)}
+                      placeholder="e.g. Characters Table"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Description</label>
+                    <input
+                      type="text"
+                      value={question.description || ''}
+                      onChange={e => handleQuestionChange(qIndex, 'description', e.target.value)}
+                      placeholder="Describe the forced-recall task"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <ForcedRecallEditor
+                      question={question}
+                      onChange={(field, value) => handleQuestionChange(qIndex, field, value)}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
