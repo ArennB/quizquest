@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Challenge, UserProfile, Attempt
+from .models import Challenge, UserProfile, Attempt, Match
 
 class ChallengeSerializer(serializers.ModelSerializer):
     total_attempts = serializers.SerializerMethodField()
@@ -61,3 +61,22 @@ class AttemptSerializer(serializers.ModelSerializer):
         validated_data["total_time"] = total_time
 
         return super().create(validated_data)
+
+class MatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Match
+        fields = '__all__'
+
+    def update(self, instance, validated_data):
+        # When both attempts are present, determine winner and award XP
+        instance = super().update(instance, validated_data)
+        if instance.attempt1 and instance.attempt2 and not instance.winner:
+            winner = instance.determine_winner()
+            if winner:
+                instance.winner = winner
+                instance.finished_at = timezone.now()
+                instance.save()
+                # Award bonus XP to winner
+                winner.total_xp += 50  # or any bonus value
+                winner.save()
+        return instance
