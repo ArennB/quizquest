@@ -2,8 +2,8 @@ from django.shortcuts import render
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Challenge, UserProfile, Attempt
-from .serializers import ChallengeSerializer, UserProfileSerializer, AttemptSerializer
+from .models import Challenge, UserProfile, Attempt, Match
+from .serializers import ChallengeSerializer, UserProfileSerializer, AttemptSerializer, MatchSerializer
 
 class ChallengeViewSet(viewsets.ModelViewSet):
     queryset = Challenge.objects.all()
@@ -148,3 +148,20 @@ class AttemptViewSet(viewsets.ModelViewSet):
         data['new_total_xp'] = user_profile.total_xp if user_uid else None
 
         return Response(data, status=status.HTTP_201_CREATED)
+
+class MatchViewSet(viewsets.ModelViewSet):
+    queryset = Match.objects.all()
+    serializer_class = MatchSerializer
+
+    def update(self, request, *args, **kwargs):
+        # When an attempt is submitted, update the match and check for winner
+        response = super().update(request, *args, **kwargs)
+        match = self.get_object()
+        if match.attempt1 and match.attempt2 and not match.winner:
+            winner = match.determine_winner()
+            if winner:
+                match.winner = winner
+                match.finished_at = timezone.now()
+                match.save()
+                # Bonus XP logic is in serializer
+        return response
