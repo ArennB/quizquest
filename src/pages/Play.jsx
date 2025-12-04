@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import ForcedRecallQuestion from './ForcedRecallQuestion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import axios from 'axios';
@@ -13,6 +14,7 @@ function Play() {
   const [challenge, setChallenge] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [forcedRecallAnswers, setForcedRecallAnswers] = useState({});
   const [answers, setAnswers] = useState([]);
   const [showResult, setShowResult] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -51,18 +53,41 @@ function Play() {
 
   const handleAnswerSelect = (answerIndex) => {
     setSelectedAnswer(answerIndex);
+    setForcedRecallAnswers({}); // reset forced recall answers if switching back
+  };
+
+  const handleForcedRecallChange = (entryId, value) => {
+    setForcedRecallAnswers(prev => ({ ...prev, [entryId]: value }));
+    setSelectedAnswer(null); // reset selectedAnswer if using forced recall
   };
 
   const handleNext = () => {
-    if (selectedAnswer === null) return;
+    const currentQuestion = challenge.questions[currentQuestionIndex];
+    let answerToStore = null;
+    if (currentQuestion.type === 'forced_recall') {
+      answerToStore = { table_entries: forcedRecallAnswers, question_id: currentQuestion.question_id, time_spent: 0 };
+      if (Object.keys(forcedRecallAnswers).length === 0) return; // require at least one entry
+    } else {
+      if (selectedAnswer === null) return;
+      answerToStore = selectedAnswer;
+    }
 
     const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = selectedAnswer;
+    newAnswers[currentQuestionIndex] = answerToStore;
     setAnswers(newAnswers);
+
+    setForcedRecallAnswers({});
+    setSelectedAnswer(null);
 
     if (currentQuestionIndex < challenge.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setSelectedAnswer(answers[currentQuestionIndex + 1]);
+      // Pre-fill selectedAnswer/forcedRecallAnswers for next question if needed
+      const nextQ = challenge.questions[currentQuestionIndex + 1];
+      if (nextQ.type === 'forced_recall') {
+        setForcedRecallAnswers(newAnswers[currentQuestionIndex + 1]?.table_entries || {});
+      } else {
+        setSelectedAnswer(newAnswers[currentQuestionIndex + 1] ?? null);
+      }
     } else {
       submitChallenge(newAnswers);
     }
@@ -71,7 +96,14 @@ function Play() {
   const handlePrevious = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setSelectedAnswer(answers[currentQuestionIndex - 1]);
+      const prevQ = challenge.questions[currentQuestionIndex - 1];
+      if (prevQ.type === 'forced_recall') {
+        setForcedRecallAnswers(answers[currentQuestionIndex - 1]?.table_entries || {});
+        setSelectedAnswer(null);
+      } else {
+        setSelectedAnswer(answers[currentQuestionIndex - 1] ?? null);
+        setForcedRecallAnswers({});
+      }
     }
   };
 
@@ -82,30 +114,34 @@ function Play() {
       return;
     }
 
-    // Calculate score
-    let correctCount = 0;
-    challenge.questions.forEach((question, index) => {
-      if (finalAnswers[index] === question.correct_answer) {
-        correctCount++;
-      }
-    });
-
-    const score = (correctCount / challenge.questions.length) * 100;
-
     try {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
-      
+      // Prepare answers for backend: forced-recall answers are objects, others are indices
+      const submitted_answers = challenge.questions.map((q, idx) => {
+        if (q.type === 'forced_recall') {
+          return {
+            question_id: q.question_id,
+            table_entries: finalAnswers[idx]?.table_entries || {},
+            time_spent: 0
+          };
+        } else {
+          return {
+            question_id: q.question_id,
+            text: q.options ? q.options[finalAnswers[idx]] : finalAnswers[idx],
+            time_spent: 0
+          };
+        }
+      });
+
       const response = await axios.post(`${API_URL}/attempts/`, {
         user_uid: user.uid,
         email: user.email,
         display_name: user.displayName || user.email?.split('@')[0] || 'Anonymous',
         challenge: parseInt(id),
-        score: score,
-        total_time: totalTime,
-        answers: finalAnswers
+        submitted_answers,
+        total_time: totalTime
       });
 
-      // Store XP data and time for result display
       setAnswers(finalAnswers);
       window.sessionStorage.setItem('lastAttemptXP', JSON.stringify(response.data.xp_breakdown));
       window.sessionStorage.setItem('lastAttemptTime', totalTime);
@@ -225,20 +261,27 @@ function Play() {
       </div>
 
       <div className="question-container">
-        <h3 className="question-text">{currentQuestion.question_text}</h3>
-        
-        <div className="answers-grid">
-          {currentQuestion.options.map((option, index) => (
-            <button
-              key={index}
-              className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
-              onClick={() => handleAnswerSelect(index)}
-            >
-              <span className="option-letter">{String.fromCharCode(65 + index)}</span>
-              <span className="option-text">{option}</span>
-            </button>
-          ))}
-        </div>
+        <h3 className="question-text">{currentQuestion.type === 'forced_recall' ? currentQuestion.text : currentQuestion.question_text}</h3>
+        {currentQuestion.type === 'forced_recall' ? (
+          <ForcedRecallQuestion
+            question={currentQuestion}
+            value={forcedRecallAnswers}
+            onChange={handleForcedRecallChange}
+          />
+        ) : (
+          <div className="answers-grid">
+            {currentQuestion.options && currentQuestion.options.map((option, index) => (
+              <button
+                key={index}
+                className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
+                onClick={() => handleAnswerSelect(index)}
+              >
+                <span className="option-letter">{String.fromCharCode(65 + index)}</span>
+                <span className="option-text">{option}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="navigation-buttons">
           <button 
@@ -251,7 +294,7 @@ function Play() {
           <button 
             onClick={handleNext} 
             className="btn btn-primary"
-            disabled={selectedAnswer === null}
+            disabled={currentQuestion.type === 'forced_recall' ? Object.keys(forcedRecallAnswers).length === 0 : selectedAnswer === null}
           >
             {currentQuestionIndex === challenge.questions.length - 1 ? 'Submit' : 'Next'}
           </button>
