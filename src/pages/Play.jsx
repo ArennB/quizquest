@@ -18,6 +18,7 @@ function Play() {
   const [shortAnswer, setShortAnswer] = useState("");
   const [answers, setAnswers] = useState([]);
   const [showResult, setShowResult] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [startTime, setStartTime] = useState(null);
@@ -70,6 +71,8 @@ function Play() {
     const newAnswers = [...answers];
     newAnswers[currentQuestionIndex] = answerToStore;
     setAnswers(newAnswers);
+
+    setSelectedAnswer(null);
 
     if (currentQuestionIndex < challenge.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -126,7 +129,12 @@ function Play() {
 
     try {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
-      
+      const submitted_answers = challenge.questions.map((q, idx) => ({
+        question_id: q.question_id,
+        text: q.options ? q.options[finalAnswers[idx]] : finalAnswers[idx],
+        time_spent: 0
+      }));
+
       const response = await axios.post(`${API_URL}/attempts/`, {
         user_uid: user.uid,
         email: user.email,
@@ -136,7 +144,6 @@ function Play() {
         submitted_answers: finalAnswers
       });
 
-      // Store XP data and time for result display
       setAnswers(finalAnswers);
       window.sessionStorage.setItem('lastAttemptXP', JSON.stringify(response.data.xp_breakdown));
       window.sessionStorage.setItem('lastAttemptTime', totalTime);
@@ -224,13 +231,71 @@ function Play() {
           )}
 
           <div className="result-actions">
+            <button 
+              onClick={() => setShowReview(!showReview)} 
+              className="btn btn-secondary"
+            >
+              {showReview ? 'Hide Review' : 'Review Answers'}
+            </button>
             <button onClick={() => navigate('/browse')} className="btn btn-secondary">
-              Browse More Challenges
+              Browse More
             </button>
             <button onClick={() => navigate('/leaderboard')} className="btn btn-primary">
-              View Leaderboard
+              Leaderboard
             </button>
           </div>
+
+          {showReview && (
+            <div className="review-section">
+              <h3>Question Review</h3>
+              {challenge.questions.map((question, idx) => {
+                const userAnswer = answers[idx];
+                const correctAnswer = question.correct_answer;
+                const isCorrect = userAnswer === correctAnswer;
+
+                return (
+                  <div key={idx} className={`review-question ${isCorrect ? 'correct' : 'incorrect'}`}>
+                    <div className="review-question-header">
+                      <span className="review-question-number">Question {idx + 1}</span>
+                      <span className={`review-status ${isCorrect ? 'correct' : 'incorrect'}`}>
+                        {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                      </span>
+                    </div>
+                    <div className="review-question-text">{question.question_text}</div>
+                    <div className="review-answers">
+                      {question.options.map((option, optIdx) => {
+                        const isUserAnswer = userAnswer === optIdx;
+                        const isCorrectAnswer = correctAnswer === optIdx;
+                        
+                        let className = 'review-answer';
+                        if (isUserAnswer && isCorrectAnswer) {
+                          className += ' correct-answer';
+                        } else if (isUserAnswer && !isCorrectAnswer) {
+                          className += ' your-wrong-answer';
+                        } else if (isCorrectAnswer) {
+                          className += ' correct-answer';
+                        }
+
+                        return (
+                          <div key={optIdx} className={className}>
+                            {isUserAnswer && (
+                              <span className="review-answer-label your">Your Answer</span>
+                            )}
+                            {isCorrectAnswer && !isUserAnswer && (
+                              <span className="review-answer-label correct">Correct Answer</span>
+                            )}
+                            <span className="review-answer-text">
+                              {String.fromCharCode(65 + optIdx)}. {option}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );

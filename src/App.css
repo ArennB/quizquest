@@ -556,6 +556,12 @@ body {
   color: var(--white);
   border-radius: 50%;
   font-weight: bold;
+  flex-shrink: 0;
+}
+
+.option-text {
+  color: var(--darker-grey);
+  font-weight: 500;
 }
 
 .navigation-buttons {
@@ -647,6 +653,7 @@ body {
   gap: 1rem;
   justify-content: center;
   margin-top: 2rem;
+  flex-wrap: wrap;
 }
 
 /* Create Page */
@@ -814,7 +821,7 @@ body {
 .no-data {
   text-align: center;
   padding: 3rem;
-  color: #aaa;
+  color: var(--medium-grey);
 }
 
 @media (max-width: 768px) {
@@ -838,5 +845,13 @@ body {
   .challenges,
   .avg-time {
     display: none;
+  }
+
+  .result-actions {
+    flex-direction: column;
+  }
+
+  .result-actions .btn {
+    width: 100%;
   }
 }

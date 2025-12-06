@@ -94,7 +94,7 @@ function App() {
 }
 
 function RedirectIfLoggedIn({ children }) {
-  const { currentUser } = useAuth();    // 🔥 FIXED
+  const { currentUser } = useAuth();
 
   if (currentUser) {
     return <Navigate to="/browse" replace />;
@@ -104,5 +104,3 @@ function RedirectIfLoggedIn({ children }) {
 }
 
 export default App;
-
-
