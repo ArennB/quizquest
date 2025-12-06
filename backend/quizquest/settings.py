@@ -76,10 +76,16 @@ WSGI_APPLICATION = 'quizquest.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+import os
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('PGDATABASE', 'railway'),
+        'USER': os.environ.get('PGUSER', 'postgres'),
+        'PASSWORD': os.environ.get('PGPASSWORD', 'iGnSVGTEVXKxzZCddgyHSkPiHOFSfJiW'),
+        'HOST': os.environ.get('PGHOST', 'postgres.railway.internal'),
+        'PORT': os.environ.get('PGPORT', '5432'),
     }
 }
 
