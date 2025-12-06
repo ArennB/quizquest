@@ -968,6 +968,13 @@ body {
     flex-direction: column;
   }
 
+  /* Force navbar logo to be black */
+.nav-logo {
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+  text-shadow: none !important;
+}
+
   .result-actions .btn {
     width: 100%;
   }
