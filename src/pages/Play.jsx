@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import ForcedRecallQuestion from './ForcedRecallQuestion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import axios from 'axios';
@@ -14,9 +13,9 @@ function Play() {
   const [challenge, setChallenge] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [forcedRecallAnswers, setForcedRecallAnswers] = useState({});
   const [answers, setAnswers] = useState([]);
   const [showResult, setShowResult] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [startTime, setStartTime] = useState(null);
@@ -53,41 +52,20 @@ function Play() {
 
   const handleAnswerSelect = (answerIndex) => {
     setSelectedAnswer(answerIndex);
-    setForcedRecallAnswers({}); // reset forced recall answers if switching back
-  };
-
-  const handleForcedRecallChange = (entryId, value) => {
-    setForcedRecallAnswers(prev => ({ ...prev, [entryId]: value }));
-    setSelectedAnswer(null); // reset selectedAnswer if using forced recall
   };
 
   const handleNext = () => {
-    const currentQuestion = challenge.questions[currentQuestionIndex];
-    let answerToStore = null;
-    if (currentQuestion.type === 'forced_recall') {
-      answerToStore = { table_entries: forcedRecallAnswers, question_id: currentQuestion.question_id, time_spent: 0 };
-      if (Object.keys(forcedRecallAnswers).length === 0) return; // require at least one entry
-    } else {
-      if (selectedAnswer === null) return;
-      answerToStore = selectedAnswer;
-    }
+    if (selectedAnswer === null) return;
 
     const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = answerToStore;
+    newAnswers[currentQuestionIndex] = selectedAnswer;
     setAnswers(newAnswers);
 
-    setForcedRecallAnswers({});
     setSelectedAnswer(null);
 
     if (currentQuestionIndex < challenge.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      // Pre-fill selectedAnswer/forcedRecallAnswers for next question if needed
-      const nextQ = challenge.questions[currentQuestionIndex + 1];
-      if (nextQ.type === 'forced_recall') {
-        setForcedRecallAnswers(newAnswers[currentQuestionIndex + 1]?.table_entries || {});
-      } else {
-        setSelectedAnswer(newAnswers[currentQuestionIndex + 1] ?? null);
-      }
+      setSelectedAnswer(newAnswers[currentQuestionIndex + 1] ?? null);
     } else {
       submitChallenge(newAnswers);
     }
@@ -96,14 +74,7 @@ function Play() {
   const handlePrevious = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
-      const prevQ = challenge.questions[currentQuestionIndex - 1];
-      if (prevQ.type === 'forced_recall') {
-        setForcedRecallAnswers(answers[currentQuestionIndex - 1]?.table_entries || {});
-        setSelectedAnswer(null);
-      } else {
-        setSelectedAnswer(answers[currentQuestionIndex - 1] ?? null);
-        setForcedRecallAnswers({});
-      }
+      setSelectedAnswer(answers[currentQuestionIndex - 1] ?? null);
     }
   };
 
@@ -116,22 +87,11 @@ function Play() {
 
     try {
       const totalTime = Math.floor((Date.now() - startTime) / 1000);
-      // Prepare answers for backend: forced-recall answers are objects, others are indices
-      const submitted_answers = challenge.questions.map((q, idx) => {
-        if (q.type === 'forced_recall') {
-          return {
-            question_id: q.question_id,
-            table_entries: finalAnswers[idx]?.table_entries || {},
-            time_spent: 0
-          };
-        } else {
-          return {
-            question_id: q.question_id,
-            text: q.options ? q.options[finalAnswers[idx]] : finalAnswers[idx],
-            time_spent: 0
-          };
-        }
-      });
+      const submitted_answers = challenge.questions.map((q, idx) => ({
+        question_id: q.question_id,
+        text: q.options ? q.options[finalAnswers[idx]] : finalAnswers[idx],
+        time_spent: 0
+      }));
 
       const response = await axios.post(`${API_URL}/attempts/`, {
         user_uid: user.uid,
@@ -226,13 +186,71 @@ function Play() {
           )}
 
           <div className="result-actions">
+            <button 
+              onClick={() => setShowReview(!showReview)} 
+              className="btn btn-secondary"
+            >
+              {showReview ? 'Hide Review' : 'Review Answers'}
+            </button>
             <button onClick={() => navigate('/browse')} className="btn btn-secondary">
-              Browse More Challenges
+              Browse More
             </button>
             <button onClick={() => navigate('/leaderboard')} className="btn btn-primary">
-              View Leaderboard
+              Leaderboard
             </button>
           </div>
+
+          {showReview && (
+            <div className="review-section">
+              <h3>Question Review</h3>
+              {challenge.questions.map((question, idx) => {
+                const userAnswer = answers[idx];
+                const correctAnswer = question.correct_answer;
+                const isCorrect = userAnswer === correctAnswer;
+
+                return (
+                  <div key={idx} className={`review-question ${isCorrect ? 'correct' : 'incorrect'}`}>
+                    <div className="review-question-header">
+                      <span className="review-question-number">Question {idx + 1}</span>
+                      <span className={`review-status ${isCorrect ? 'correct' : 'incorrect'}`}>
+                        {isCorrect ? '✓ Correct' : '✗ Incorrect'}
+                      </span>
+                    </div>
+                    <div className="review-question-text">{question.question_text}</div>
+                    <div className="review-answers">
+                      {question.options.map((option, optIdx) => {
+                        const isUserAnswer = userAnswer === optIdx;
+                        const isCorrectAnswer = correctAnswer === optIdx;
+                        
+                        let className = 'review-answer';
+                        if (isUserAnswer && isCorrectAnswer) {
+                          className += ' correct-answer';
+                        } else if (isUserAnswer && !isCorrectAnswer) {
+                          className += ' your-wrong-answer';
+                        } else if (isCorrectAnswer) {
+                          className += ' correct-answer';
+                        }
+
+                        return (
+                          <div key={optIdx} className={className}>
+                            {isUserAnswer && (
+                              <span className="review-answer-label your">Your Answer</span>
+                            )}
+                            {isCorrectAnswer && !isUserAnswer && (
+                              <span className="review-answer-label correct">Correct Answer</span>
+                            )}
+                            <span className="review-answer-text">
+                              {String.fromCharCode(65 + optIdx)}. {option}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -261,27 +279,19 @@ function Play() {
       </div>
 
       <div className="question-container">
-        <h3 className="question-text">{currentQuestion.type === 'forced_recall' ? currentQuestion.text : currentQuestion.question_text}</h3>
-        {currentQuestion.type === 'forced_recall' ? (
-          <ForcedRecallQuestion
-            question={currentQuestion}
-            value={forcedRecallAnswers}
-            onChange={handleForcedRecallChange}
-          />
-        ) : (
-          <div className="answers-grid">
-            {currentQuestion.options && currentQuestion.options.map((option, index) => (
-              <button
-                key={index}
-                className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
-                onClick={() => handleAnswerSelect(index)}
-              >
-                <span className="option-letter">{String.fromCharCode(65 + index)}</span>
-                <span className="option-text">{option}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        <h3 className="question-text">{currentQuestion.question_text}</h3>
+        <div className="answers-grid">
+          {currentQuestion.options && currentQuestion.options.map((option, index) => (
+            <button
+              key={index}
+              className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
+              onClick={() => handleAnswerSelect(index)}
+            >
+              <span className="option-letter">{String.fromCharCode(65 + index)}</span>
+              <span className="option-text">{option}</span>
+            </button>
+          ))}
+        </div>
 
         <div className="navigation-buttons">
           <button 
@@ -294,7 +304,7 @@ function Play() {
           <button 
             onClick={handleNext} 
             className="btn btn-primary"
-            disabled={currentQuestion.type === 'forced_recall' ? Object.keys(forcedRecallAnswers).length === 0 : selectedAnswer === null}
+            disabled={selectedAnswer === null}
           >
             {currentQuestionIndex === challenge.questions.length - 1 ? 'Submit' : 'Next'}
           </button>
