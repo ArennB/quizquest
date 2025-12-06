@@ -86,6 +86,62 @@ def grade_answers(challenge, submitted_answers):
     return graded_answers, score
 
 class ChallengeViewSet(viewsets.ModelViewSet):
+        @action(detail=False, methods=['post'])
+        def import_opentdb(self, request):
+            """
+            Import quizzes from Open Trivia DB via API.
+            Only allow if user is admin or a valid import token is provided.
+            Accepts: amount (int), category (int, optional), difficulty (str, optional)
+            """
+            import requests, html, random
+            # SECURITY: Require admin or secret token
+            IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
+            token = request.headers.get('X-Import-Token') or request.data.get('import_token')
+            if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
+                return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+            amount = int(request.data.get('amount', 10))
+            category = request.data.get('category')
+            difficulty = request.data.get('difficulty')
+            params = {'amount': amount, 'type': 'multiple'}
+            if category:
+                params['category'] = category
+            if difficulty:
+                params['difficulty'] = difficulty
+            resp = requests.get('https://opentdb.com/api.php', params=params)
+            data = resp.json()
+            if data.get('response_code') != 0:
+                return Response({'detail': 'Error fetching from Open Trivia DB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            questions = []
+            for i, q in enumerate(data['results']):
+                options = q['incorrect_answers'] + [q['correct_answer']]
+                options = [html.unescape(opt) for opt in options]
+                random.shuffle(options)
+                correct_index = options.index(html.unescape(q['correct_answer']))
+                questions.append({
+                    'type': 'multiple_choice',
+                    'question_text': html.unescape(q['question']),
+                    'options': options,
+                    'correct_answer': correct_index,
+                    'question_id': f'opentdb_{i}_{random.randint(1000,9999)}'
+                })
+
+            challenge_title = f'Open Trivia DB Import ({amount} questions)'
+            if category:
+                challenge_title += f' - Category {category}'
+            if difficulty:
+                challenge_title += f' - {difficulty.capitalize()}'
+
+            challenge = Challenge.objects.create(
+                title=challenge_title,
+                description='Imported from Open Trivia DB',
+                theme=data['results'][0].get('category', 'General') if data['results'] else 'General',
+                difficulty=difficulty or 'medium',
+                creator_uid='opentdb_import',
+                questions=questions
+            )
+            return Response({'created': ChallengeSerializer(challenge).data}, status=status.HTTP_201_CREATED)
     queryset = Challenge.objects.all()
     serializer_class = ChallengeSerializer
     
@@ -163,6 +219,35 @@ class ChallengeViewSet(viewsets.ModelViewSet):
             'graded_answers': attempt.answers
         }
         return Response(response_data, status=status.HTTP_201_CREATED)
+    
+        @action(detail=False, methods=['post'])
+        def import_quizzes(self, request):
+            """
+            Import one or more quizzes (challenges) via API.
+            Only allow if user is admin or a valid import token is provided.
+            Expects a list of challenge objects in request.data['quizzes'] or a single challenge object.
+            """
+            # SECURITY: Require admin or secret token
+            IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
+            token = request.headers.get('X-Import-Token') or request.data.get('import_token')
+            if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
+                return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+            quizzes = request.data.get('quizzes')
+            if not quizzes:
+                # Allow single quiz import
+                quiz = request.data.get('quiz') or request.data
+                quizzes = [quiz]
+            created = []
+            errors = []
+            for quiz in quizzes:
+                serializer = ChallengeSerializer(data=quiz)
+                if serializer.is_valid():
+                    serializer.save()
+                    created.append(serializer.data)
+                else:
+                    errors.append(serializer.errors)
+            return Response({'created': created, 'errors': errors}, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
     
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
