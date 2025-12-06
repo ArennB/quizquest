@@ -1,3 +1,4 @@
+CSRF_TRUSTED_ORIGINS = ['https://quizquest-production.up.railway.app']
 """
 Django settings for quizquest project.
 
