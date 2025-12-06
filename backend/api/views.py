@@ -29,33 +29,40 @@ def grade_answers(challenge, submitted_answers):
         
         # Debug output
         import json
-        if question_type == 'short_answer':
-            print(f"\n=== QUESTION {i} ({question_type}) ===")
-            print(f"Question: {json.dumps(question, indent=2)}")
-            print(f"Submitted: {json.dumps(submitted, indent=2)}")
-        
+        print(f"\n=== QUESTION {i} ({question_type}) ===")
+        print(f"Question: {json.dumps(question, indent=2)}")
+        print(f"Submitted: {json.dumps(submitted, indent=2)}")
+
+        # Support both dict and int formats for submitted answers
+        if isinstance(submitted, dict):
+            time_value = submitted.get('time_spent', submitted.get('time', 0))
+            answer_value = submitted.get('answer', submitted.get('selected_option', None))
+        else:
+            time_value = 0
+            answer_value = submitted
         graded_answer = {
             'question_id': i,
             'type': question_type,
             'correct': False,
-            'time': submitted.get('time_spent', submitted.get('time', 0))
+            'time': time_value
         }
-        
+
         if question_type == 'multiple_choice':
             # Check if selected option matches correct answer
             correct_option = question.get('correct_answer')
-            submitted_option = submitted.get('answer') or submitted.get('selected_option')
+            submitted_option = answer_value
             graded_answer['submitted'] = submitted_option
             graded_answer['correct'] = correct_option == submitted_option
-        
+
         elif question_type == 'forced_recall' or question_type == 'short_answer':
             # For short-answer: check if user's answer matches any acceptable answer
             acceptable_answers = question.get('acceptable_answers', [])
-            user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
-            
+            if isinstance(submitted, dict):
+                user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
+            else:
+                user_answer = str(submitted).strip().lower()
             graded_answer['submitted'] = user_answer
             graded_answer['acceptable_answers'] = [a.strip().lower() for a in acceptable_answers]
-            
             # Check if user's answer matches any acceptable answer (case-insensitive)
             for acceptable in acceptable_answers:
                 normalized_acceptable = acceptable.strip().lower()
@@ -81,81 +88,92 @@ def grade_answers(challenge, submitted_answers):
 class ChallengeViewSet(viewsets.ModelViewSet):
     queryset = Challenge.objects.all()
     serializer_class = ChallengeSerializer
-    
-    @action(detail=False, methods=['get'])
-    def by_theme(self, request):
-        """Get challenges by theme"""
-        theme = request.query_params.get('theme')
-        challenges = Challenge.objects.filter(theme=theme, is_published=True)
-        serializer = self.get_serializer(challenges, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def submit_attempt(self, request, pk=None):
-        """Submit quiz attempt and use server-side grading (creates an Attempt)"""
-        challenge = self.get_object()
-        # Expect client to send 'submitted_answers' (list of {question_id, text, table_entries, time_spent})
-        submitted_answers = request.data.get('submitted_answers') or request.data.get('answers', [])
-        user_uid = request.data.get('user_uid') or request.data.get('user', None)
-        email = request.data.get('email', '')
-        display_name = request.data.get('display_name', 'Anonymous')
 
-        # Grade the answers
-        graded_answers, score = grade_answers(challenge, submitted_answers)
+    @action(detail=False, methods=['post'])
+    def import_opentdb(self, request):
+        """
+        Import quizzes from Open Trivia DB via API.
+        Only allow if user is admin or a valid import token is provided.
+        Accepts: amount (int), category (int, optional), difficulty (str, optional)
+        """
+        import requests, html, random
+        # SECURITY: Require admin or secret token
+        IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
+        token = request.headers.get('X-Import-Token') or request.data.get('import_token')
+        if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
 
-        # Build attempt payload for serializer
-        attempt_payload = {
-            'challenge': challenge.id,
-            'user_uid': user_uid,
-            'submitted_answers': submitted_answers,
-            'answers': graded_answers,
-            'score': score,
-            'total_time': request.data.get('total_time', 0),
-        }
+        amount = int(request.data.get('amount', 10))
+        category = request.data.get('category')
+        difficulty = request.data.get('difficulty')
+        params = {'amount': amount, 'type': 'multiple'}
+        if category:
+            params['category'] = category
+        if difficulty:
+            params['difficulty'] = difficulty
+        resp = requests.get('https://opentdb.com/api.php', params=params)
+        data = resp.json()
+        if data.get('response_code') != 0:
+            return Response({'detail': 'Error fetching from Open Trivia DB.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = AttemptSerializer(data=attempt_payload)
-        serializer.is_valid(raise_exception=True)
-        attempt = serializer.save()
+        questions = []
+        for i, q in enumerate(data['results']):
+            options = q['incorrect_answers'] + [q['correct_answer']]
+            options = [html.unescape(opt) for opt in options]
+            random.shuffle(options)
+            correct_index = options.index(html.unescape(q['correct_answer']))
+            questions.append({
+                'type': 'multiple_choice',
+                'question_text': html.unescape(q['question']),
+                'options': options,
+                'correct_answer': correct_index,
+                'question_id': f'opentdb_{i}_{random.randint(1000,9999)}'
+            })
 
-        # Compute XP same way as AttemptViewSet.create would
-        difficulty_multipliers = {
-            'easy': 1.0,
-            'medium': 1.5,
-            'hard': 2.0
-        }
-        multiplier = difficulty_multipliers.get(challenge.difficulty, 1.0)
-        base_xp = int(attempt.score * multiplier)
-        previous_attempts = Attempt.objects.filter(user_uid=user_uid, challenge=challenge).exclude(id=attempt.id).exists()
-        first_time_bonus = 0 if previous_attempts else 50
-        perfect_bonus = 25 if attempt.score >= 100 else 0
-        total_xp = base_xp + first_time_bonus + perfect_bonus
+        challenge_title = f'Open Trivia DB Import ({amount} questions)'
+        if category:
+            challenge_title += f' - Category {category}'
+        if difficulty:
+            challenge_title += f' - {difficulty.capitalize()}'
 
-        # Update / create user profile
-        if user_uid:
-            user_profile, created = UserProfile.objects.get_or_create(
-                firebase_uid=user_uid,
-                defaults={'email': email, 'display_name': display_name}
-            )
-            user_profile.total_xp += total_xp
-            user_profile.challenges_completed += 1
-            user_profile.save()
+        challenge = Challenge.objects.create(
+            title=challenge_title,
+            description='Imported from Open Trivia DB',
+            theme=data['results'][0].get('category', 'General') if data['results'] else 'General',
+            difficulty=difficulty or 'medium',
+            creator_uid='opentdb_import',
+            questions=questions
+        )
+        return Response({'created': ChallengeSerializer(challenge).data}, status=status.HTTP_201_CREATED)
 
-        # Attach XP breakdown to response
-        response_data = {
-            'attempt_id': attempt.id,
-            'score': attempt.score,
-            'total_time': attempt.total_time,
-            'xp_earned': total_xp,
-            'xp_breakdown': {
-                'base_xp': base_xp,
-                'difficulty_multiplier': multiplier,
-                'first_time_bonus': first_time_bonus,
-                'perfect_bonus': perfect_bonus,
-                'total_xp': total_xp
-            },
-            'graded_answers': attempt.answers
-        }
-        return Response(response_data, status=status.HTTP_201_CREATED)
+    @action(detail=False, methods=['post'])
+    def import_quizzes(self, request):
+        """
+        Import one or more quizzes (challenges) via API.
+        Only allow if user is admin or a valid import token is provided.
+        Expects a list of challenge objects in request.data['quizzes'] or a single challenge object.
+        """
+        # SECURITY: Require admin or secret token
+        IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
+        token = request.headers.get('X-Import-Token') or request.data.get('import_token')
+        if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
+            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        quizzes = request.data.get('quizzes')
+        if not quizzes:
+            # Allow single quiz import
+            quiz = request.data.get('quiz') or request.data
+            quizzes = [quiz]
+        created = []
+        errors = []
+        for quiz in quizzes:
+            serializer = ChallengeSerializer(data=quiz)
+            if serializer.is_valid():
+                serializer.save()
+                created.append(serializer.data)
+            else:
+                errors.append(serializer.errors)
+        return Response({'created': created, 'errors': errors}, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
     
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()

@@ -7,7 +7,7 @@ import ShortAnswerQuestion from './ShortAnswerQuestion';
 import "./Play.css";
 
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'https://quizquest-production.up.railway.app/api';
 
 function Play() {
   const { id } = useParams();
