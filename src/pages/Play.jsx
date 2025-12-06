@@ -1,7 +1,9 @@
+
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import axios from 'axios';
+import ShortAnswerQuestion from './ShortAnswerQuestion';
 import "./Play.css";
 
 
@@ -13,6 +15,7 @@ function Play() {
   const [challenge, setChallenge] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [shortAnswer, setShortAnswer] = useState("");
   const [answers, setAnswers] = useState([]);
   const [showResult, setShowResult] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -54,15 +57,30 @@ function Play() {
   };
 
   const handleNext = () => {
-    if (selectedAnswer === null) return;
+    const currentQuestion = challenge.questions[currentQuestionIndex];
+    let answerToStore = null;
+    if (currentQuestion.type === 'short_answer') {
+      if (!shortAnswer.trim()) return;
+      answerToStore = shortAnswer.trim();
+    } else {
+      if (selectedAnswer === null) return;
+      answerToStore = selectedAnswer;
+    }
 
     const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = selectedAnswer;
+    newAnswers[currentQuestionIndex] = answerToStore;
     setAnswers(newAnswers);
 
     if (currentQuestionIndex < challenge.questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setSelectedAnswer(answers[currentQuestionIndex + 1]);
+      const nextQ = challenge.questions[currentQuestionIndex + 1];
+      if (nextQ.type === 'short_answer') {
+        setShortAnswer(newAnswers[currentQuestionIndex + 1] || "");
+        setSelectedAnswer(null);
+      } else {
+        setSelectedAnswer(newAnswers[currentQuestionIndex + 1] ?? null);
+        setShortAnswer("");
+      }
     } else {
       submitChallenge(newAnswers);
     }
@@ -71,7 +89,14 @@ function Play() {
   const handlePrevious = () => {
     if (currentQuestionIndex > 0) {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setSelectedAnswer(answers[currentQuestionIndex - 1]);
+      const prevQ = challenge.questions[currentQuestionIndex - 1];
+      if (prevQ.type === 'short_answer') {
+        setShortAnswer(answers[currentQuestionIndex - 1] || "");
+        setSelectedAnswer(null);
+      } else {
+        setSelectedAnswer(answers[currentQuestionIndex - 1] ?? null);
+        setShortAnswer("");
+      }
     }
   };
 
@@ -85,11 +110,18 @@ function Play() {
     // Calculate score
     let correctCount = 0;
     challenge.questions.forEach((question, index) => {
-      if (finalAnswers[index] === question.correct_answer) {
-        correctCount++;
+      if (question.type === 'short_answer') {
+        const userAns = (finalAnswers[index] || '').trim().toLowerCase();
+        const acceptable = (question.acceptable_answers || []).map(a => a.trim().toLowerCase());
+        if (acceptable.includes(userAns)) {
+          correctCount++;
+        }
+      } else {
+        if (finalAnswers[index] === question.correct_answer) {
+          correctCount++;
+        }
       }
     });
-
     const score = (correctCount / challenge.questions.length) * 100;
 
     try {
@@ -100,15 +132,15 @@ function Play() {
         email: user.email,
         display_name: user.displayName || user.email?.split('@')[0] || 'Anonymous',
         challenge: parseInt(id),
-        score: score,
         total_time: totalTime,
-        answers: finalAnswers
+        submitted_answers: finalAnswers
       });
 
       // Store XP data and time for result display
       setAnswers(finalAnswers);
       window.sessionStorage.setItem('lastAttemptXP', JSON.stringify(response.data.xp_breakdown));
       window.sessionStorage.setItem('lastAttemptTime', totalTime);
+      window.sessionStorage.setItem('lastAttemptScore', response.data.score || score);
       setShowResult(true);
     } catch (err) {
       console.error('Full error:', err);
@@ -134,10 +166,12 @@ function Play() {
   }
 
   if (showResult) {
-    const correctCount = answers.filter((ans, idx) => 
-      ans === challenge.questions[idx].correct_answer
-    ).length;
-    const score = (correctCount / challenge.questions.length) * 100;
+    // Get score from backend (which handles both multiple choice and short answer)
+    const backendScore = parseInt(window.sessionStorage.getItem('lastAttemptScore') || '0');
+    const score = backendScore;
+    
+    // For display purposes, estimate correct count
+    const estimatedCorrectCount = Math.round((score / 100) * challenge.questions.length);
     
     // Get XP breakdown and time from session storage
     const xpData = JSON.parse(window.sessionStorage.getItem('lastAttemptXP') || '{}');
@@ -154,7 +188,7 @@ function Play() {
               <span className="score-number">{score.toFixed(0)}%</span>
             </div>
             <p className="score-text">
-              {correctCount} out of {challenge.questions.length} correct
+              {estimatedCorrectCount} out of {challenge.questions.length} correct
             </p>
             <p className="time-text">
               ⏱️ Completed in {minutes > 0 ? `${minutes}m ` : ''}{seconds}s
@@ -226,19 +260,26 @@ function Play() {
 
       <div className="question-container">
         <h3 className="question-text">{currentQuestion.question_text}</h3>
-        
-        <div className="answers-grid">
-          {currentQuestion.options.map((option, index) => (
-            <button
-              key={index}
-              className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
-              onClick={() => handleAnswerSelect(index)}
-            >
-              <span className="option-letter">{String.fromCharCode(65 + index)}</span>
-              <span className="option-text">{option}</span>
-            </button>
-          ))}
-        </div>
+        {currentQuestion.type === 'short_answer' ? (
+          <ShortAnswerQuestion
+            question={currentQuestion}
+            value={shortAnswer}
+            onChange={setShortAnswer}
+          />
+        ) : (
+          <div className="answers-grid">
+            {currentQuestion.options.map((option, index) => (
+              <button
+                key={index}
+                className={`answer-option ${selectedAnswer === index ? 'selected' : ''}`}
+                onClick={() => handleAnswerSelect(index)}
+              >
+                <span className="option-letter">{String.fromCharCode(65 + index)}</span>
+                <span className="option-text">{option}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="navigation-buttons">
           <button 
@@ -251,7 +292,7 @@ function Play() {
           <button 
             onClick={handleNext} 
             className="btn btn-primary"
-            disabled={selectedAnswer === null}
+            disabled={currentQuestion.type === 'short_answer' ? !shortAnswer.trim() : selectedAnswer === null}
           >
             {currentQuestionIndex === challenge.questions.length - 1 ? 'Submit' : 'Next'}
           </button>

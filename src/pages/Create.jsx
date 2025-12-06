@@ -12,14 +12,19 @@ function Create() {
   const [theme, setTheme] = useState('General');
   const [difficulty, setDifficulty] = useState('medium');
   const [questions, setQuestions] = useState([
-    { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
-    newQuestions[index][field] = value;
+    if (field === null) {
+      // Replace entire question object
+      newQuestions[index] = value;
+    } else {
+      newQuestions[index][field] = value;
+    }
     setQuestions(newQuestions);
   };
 
@@ -32,7 +37,7 @@ function Create() {
   const addQuestion = () => {
     setQuestions([
       ...questions,
-      { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 }
     ]);
   };
 
@@ -65,8 +70,12 @@ function Create() {
         setError(`Question ${i + 1} is empty`);
         return;
       }
-      if (q.options.some(opt => !opt.trim())) {
+      if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
         setError(`Question ${i + 1} has empty options`);
+        return;
+      }
+      if (q.type === 'short_answer' && (!q.acceptable_answers || q.acceptable_answers.length === 0 || q.acceptable_answers.every(a => !a.trim()))) {
+        setError(`Question ${i + 1} must have at least one acceptable answer`);
         return;
       }
     }
@@ -80,7 +89,16 @@ function Create() {
         theme,
         difficulty,
         creator_uid: user.uid,
-        questions
+        questions: questions.map(q => {
+          // Clean up acceptable_answers to remove empty strings
+          if (q.type === 'short_answer' && q.acceptable_answers) {
+            return {
+              ...q,
+              acceptable_answers: q.acceptable_answers.filter(a => a.trim())
+            };
+          }
+          return q;
+        })
       });
 
       navigate(`/play/${response.data.id}`);
@@ -191,38 +209,71 @@ function Create() {
               </div>
 
               <div className="form-group">
+                <label>Type</label>
+                <select
+                  value={question.type}
+                  onChange={e => {
+                    const value = e.target.value;
+                    let newQ;
+                    if (value === 'multiple_choice') {
+                      newQ = { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 };
+                    } else {
+                      newQ = { type: 'short_answer', question_text: '', acceptable_answers: [''] };
+                    }
+                    handleQuestionChange(qIndex, null, newQ);
+                  }}
+                >
+                  <option value="multiple_choice">Multiple Choice</option>
+                  <option value="short_answer">Short-Answer</option>
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label>Question Text</label>
                 <input
                   type="text"
                   value={question.question_text}
-                  onChange={(e) => handleQuestionChange(qIndex, 'question_text', e.target.value)}
+                  onChange={e => handleQuestionChange(qIndex, 'question_text', e.target.value)}
                   required
                   placeholder="Enter your question"
                 />
               </div>
 
-              <div className="options-grid">
-                {question.options.map((option, oIndex) => (
-                  <div key={oIndex} className="option-input">
-                    <label>
+              {question.type === 'multiple_choice' ? (
+                <div className="options-grid">
+                  {question.options.map((option, oIndex) => (
+                    <div key={oIndex} className="option-input">
+                      <label>
+                        <input
+                          type="radio"
+                          name={`correct-${qIndex}`}
+                          checked={question.correct_answer === oIndex}
+                          onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
+                        />
+                        Option {String.fromCharCode(65 + oIndex)}
+                      </label>
                       <input
-                        type="radio"
-                        name={`correct-${qIndex}`}
-                        checked={question.correct_answer === oIndex}
-                        onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
+                        type="text"
+                        value={option}
+                        onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)}
+                        required
+                        placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
                       />
-                      Option {String.fromCharCode(65 + oIndex)}
-                    </label>
-                    <input
-                      type="text"
-                      value={option}
-                      onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
-                      required
-                      placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
-                    />
-                  </div>
-                ))}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>Acceptable Answers (comma separated)</label>
+                  <input
+                    type="text"
+                    value={question.acceptable_answers ? question.acceptable_answers.join(', ') : ''}
+                    onChange={e => handleQuestionChange(qIndex, 'acceptable_answers', e.target.value.split(',').map(s => s.trim()))}
+                    required
+                    placeholder="e.g. answer1, answer2"
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>
