@@ -29,33 +29,40 @@ def grade_answers(challenge, submitted_answers):
         
         # Debug output
         import json
-        if question_type == 'short_answer':
-            print(f"\n=== QUESTION {i} ({question_type}) ===")
-            print(f"Question: {json.dumps(question, indent=2)}")
-            print(f"Submitted: {json.dumps(submitted, indent=2)}")
-        
+        print(f"\n=== QUESTION {i} ({question_type}) ===")
+        print(f"Question: {json.dumps(question, indent=2)}")
+        print(f"Submitted: {json.dumps(submitted, indent=2)}")
+
+        # Support both dict and int formats for submitted answers
+        if isinstance(submitted, dict):
+            time_value = submitted.get('time_spent', submitted.get('time', 0))
+            answer_value = submitted.get('answer', submitted.get('selected_option', None))
+        else:
+            time_value = 0
+            answer_value = submitted
         graded_answer = {
             'question_id': i,
             'type': question_type,
             'correct': False,
-            'time': submitted.get('time_spent', submitted.get('time', 0))
+            'time': time_value
         }
-        
+
         if question_type == 'multiple_choice':
             # Check if selected option matches correct answer
             correct_option = question.get('correct_answer')
-            submitted_option = submitted.get('answer') or submitted.get('selected_option')
+            submitted_option = answer_value
             graded_answer['submitted'] = submitted_option
             graded_answer['correct'] = correct_option == submitted_option
-        
+
         elif question_type == 'forced_recall' or question_type == 'short_answer':
             # For short-answer: check if user's answer matches any acceptable answer
             acceptable_answers = question.get('acceptable_answers', [])
-            user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
-            
+            if isinstance(submitted, dict):
+                user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
+            else:
+                user_answer = str(submitted).strip().lower()
             graded_answer['submitted'] = user_answer
             graded_answer['acceptable_answers'] = [a.strip().lower() for a in acceptable_answers]
-            
             # Check if user's answer matches any acceptable answer (case-insensitive)
             for acceptable in acceptable_answers:
                 normalized_acceptable = acceptable.strip().lower()
