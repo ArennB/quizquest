@@ -62,9 +62,9 @@ body {
 .nav-logo {
   font-size: 1.5rem;
   font-weight: bold;
-  color: #000;
+  color: var(--white);
   text-decoration: none;
-  text-shadow: none;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .nav-menu {
@@ -967,13 +967,6 @@ body {
   .result-actions {
     flex-direction: column;
   }
-
-  /* Force navbar logo to be black */
-.nav-logo {
-  color: #000 !important;
-  -webkit-text-fill-color: #000 !important;
-  text-shadow: none !important;
-}
 
   .result-actions .btn {
     width: 100%;
