@@ -1,9 +1,82 @@
 from django.shortcuts import render
+from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import Challenge, UserProfile, Attempt, Match
 from .serializers import ChallengeSerializer, UserProfileSerializer, AttemptSerializer, MatchSerializer
+
+def grade_answers(challenge, submitted_answers):
+    """
+    Grade submitted answers by comparing them against the challenge questions.
+    Supports multiple_choice and short_answer (forced_recall) question types.
+    Returns (graded_answers list, score as percentage).
+    """
+    graded_answers = []
+    questions = challenge.questions or []
+    
+    for i, submitted in enumerate(submitted_answers):
+        if i >= len(questions):
+            break
+        
+        question = questions[i]
+        question_type = question.get('type', 'multiple_choice')
+        
+        # Handle both dict and string formats
+        if isinstance(submitted, str):
+            # For short-answer: submitted is just the answer string
+            submitted = {'text': submitted}
+        
+        # Debug output
+        import json
+        if question_type == 'short_answer':
+            print(f"\n=== QUESTION {i} ({question_type}) ===")
+            print(f"Question: {json.dumps(question, indent=2)}")
+            print(f"Submitted: {json.dumps(submitted, indent=2)}")
+        
+        graded_answer = {
+            'question_id': i,
+            'type': question_type,
+            'correct': False,
+            'time': submitted.get('time_spent', submitted.get('time', 0))
+        }
+        
+        if question_type == 'multiple_choice':
+            # Check if selected option matches correct answer
+            correct_option = question.get('correct_answer')
+            submitted_option = submitted.get('answer') or submitted.get('selected_option')
+            graded_answer['submitted'] = submitted_option
+            graded_answer['correct'] = correct_option == submitted_option
+        
+        elif question_type == 'forced_recall' or question_type == 'short_answer':
+            # For short-answer: check if user's answer matches any acceptable answer
+            acceptable_answers = question.get('acceptable_answers', [])
+            user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
+            
+            graded_answer['submitted'] = user_answer
+            graded_answer['acceptable_answers'] = [a.strip().lower() for a in acceptable_answers]
+            
+            # Check if user's answer matches any acceptable answer (case-insensitive)
+            for acceptable in acceptable_answers:
+                normalized_acceptable = acceptable.strip().lower()
+                if user_answer == normalized_acceptable:
+                    graded_answer['correct'] = True
+                    print(f"MATCH FOUND on Q{i}: '{user_answer}' == '{normalized_acceptable}'")
+                    break
+            
+            if not graded_answer['correct']:
+                print(f"NO MATCH on Q{i}: user='{user_answer}' vs acceptable={graded_answer['acceptable_answers']}")
+        
+        graded_answers.append(graded_answer)
+    
+    # Calculate score as percentage
+    if graded_answers:
+        correct_count = sum(1 for ans in graded_answers if ans.get('correct'))
+        score = int((correct_count / len(graded_answers)) * 100)
+    else:
+        score = 0
+    
+    return graded_answers, score
 
 class ChallengeViewSet(viewsets.ModelViewSet):
     queryset = Challenge.objects.all()
@@ -27,12 +100,16 @@ class ChallengeViewSet(viewsets.ModelViewSet):
         email = request.data.get('email', '')
         display_name = request.data.get('display_name', 'Anonymous')
 
+        # Grade the answers
+        graded_answers, score = grade_answers(challenge, submitted_answers)
+
         # Build attempt payload for serializer
         attempt_payload = {
             'challenge': challenge.id,
             'user_uid': user_uid,
             'submitted_answers': submitted_answers,
-            # optional: include a started_at/completed client timestamp or let serializer set times
+            'answers': graded_answers,
+            'score': score,
             'total_time': request.data.get('total_time', 0),
         }
 
@@ -90,19 +167,25 @@ class AttemptViewSet(viewsets.ModelViewSet):
     serializer_class = AttemptSerializer
     
     def create(self, request, *args, **kwargs):
-        """Create attempt and calculate XP (use serializer to perform server-side grading)"""
-        # Use submitted_answers if present; serializer will grade and fill score/xp_earned
+        """Create attempt and calculate XP with server-side grading"""
+        challenge_id = request.data.get('challenge')
+        challenge = Challenge.objects.get(id=challenge_id)
+        
         submitted_answers = request.data.get('submitted_answers') or request.data.get('answers', [])
+        
+        # Grade the answers
+        graded_answers, score = grade_answers(challenge, submitted_answers)
+        
         request_data = request.data.copy()
         request_data['submitted_answers'] = submitted_answers
+        request_data['answers'] = graded_answers
+        request_data['score'] = score
 
         serializer = self.get_serializer(data=request_data)
         serializer.is_valid(raise_exception=True)
         attempt = serializer.save()
 
         # Get challenge for difficulty multiplier
-        challenge = attempt.challenge
-
         difficulty_multipliers = {
             'easy': 1.0,
             'medium': 1.5,

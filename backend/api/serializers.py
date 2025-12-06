@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import Challenge, UserProfile, Attempt, Match
 
 class ChallengeSerializer(serializers.ModelSerializer):
@@ -49,16 +50,23 @@ class AttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attempt
         fields = '__all__'
-        read_only_fields = ["score", "total_time", "completed_at"]
+        read_only_fields = ["completed_at"]
 
     def create(self, validated_data):
         answers = validated_data.get("answers", [])
-
-        score = sum(1 for ans in answers if ans.get("correct") is True)
-        total_time = sum(ans.get("time", 0) for ans in answers)
-
-        validated_data["score"] = score
-        validated_data["total_time"] = total_time
+        
+        # If score is already provided (from grading), use it; otherwise calculate
+        if "score" not in validated_data or validated_data["score"] is None:
+            score = sum(1 for ans in answers if ans.get("correct") is True)
+            # Convert count to percentage
+            if answers:
+                score = int((score / len(answers)) * 100)
+            validated_data["score"] = score
+        
+        # If total_time is not provided, calculate from answers
+        if "total_time" not in validated_data or validated_data["total_time"] is None:
+            total_time = sum(ans.get("time", 0) for ans in answers)
+            validated_data["total_time"] = total_time
 
         return super().create(validated_data)
 
