@@ -1,268 +1,327 @@
-from django.shortcuts import render
-from django.utils import timezone
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
-from .models import Challenge, UserProfile, Attempt, Match
-from .serializers import ChallengeSerializer, UserProfileSerializer, AttemptSerializer, MatchSerializer
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { auth } from '../firebase';
+import axios from 'axios';
 
-def grade_answers(challenge, submitted_answers):
-    """
-    Grade submitted answers by comparing them against the challenge questions.
-    Supports multiple_choice and short_answer (forced_recall) question types.
-    Returns (graded_answers list, score as percentage).
-    """
-    graded_answers = []
-    questions = challenge.questions or []
-    
-    for i, submitted in enumerate(submitted_answers):
-        if i >= len(questions):
-            break
-        
-        question = questions[i]
-        question_type = question.get('type', 'multiple_choice')
-        
-        # Handle both dict and string formats
-        if isinstance(submitted, str):
-            # For short-answer: submitted is just the answer string
-            submitted = {'text': submitted}
-        
-        # Debug output
-        import json
-        print(f"\n=== QUESTION {i} ({question_type}) ===")
-        print(f"Question: {json.dumps(question, indent=2)}")
-        print(f"Submitted: {json.dumps(submitted, indent=2)}")
+const API_URL = 'https://quizquest-production.up.railway.app/api';
 
-        # Support both dict and int formats for submitted answers
-        if isinstance(submitted, dict):
-            time_value = submitted.get('time_spent', submitted.get('time', 0))
-            answer_value = submitted.get('answer', submitted.get('selected_option', None))
-        else:
-            time_value = 0
-            answer_value = submitted
-        graded_answer = {
-            'question_id': i,
-            'type': question_type,
-            'correct': False,
-            'time': time_value
-        }
+function Create() {
+    const addOption = (questionIndex) => {
+      const newQuestions = [...questions];
+      newQuestions[questionIndex].options.push('');
+      setQuestions(newQuestions);
+    };
 
-        if question_type == 'multiple_choice':
-            # Check if selected option matches correct answer
-            correct_option = question.get('correct_answer')
-            submitted_option = answer_value
-            graded_answer['submitted'] = submitted_option
-            graded_answer['correct'] = correct_option == submitted_option
+    const removeOption = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      if (newQuestions[questionIndex].options.length > 2) {
+        newQuestions[questionIndex].options.splice(optionIndex, 1);
+        // Remove the index from correct_answers if present, and shift others down
+        if (Array.isArray(newQuestions[questionIndex].correct_answers)) {
+          newQuestions[questionIndex].correct_answers = newQuestions[questionIndex].correct_answers
+            .filter(idx => idx !== optionIndex)
+            .map(idx => (idx > optionIndex ? idx - 1 : idx));
+        }
+        setQuestions(newQuestions);
+      }
+    };
 
-        elif question_type == 'forced_recall' or question_type == 'short_answer':
-            # For short-answer: check if user's answer matches any acceptable answer
-            acceptable_answers = question.get('acceptable_answers', [])
-            if isinstance(submitted, dict):
-                user_answer = (submitted.get('text') or submitted.get('answer', '')).strip().lower()
-            else:
-                user_answer = str(submitted).strip().lower()
-            graded_answer['submitted'] = user_answer
-            graded_answer['acceptable_answers'] = [a.strip().lower() for a in acceptable_answers]
-            # Check if user's answer matches any acceptable answer (case-insensitive)
-            for acceptable in acceptable_answers:
-                normalized_acceptable = acceptable.strip().lower()
-                if user_answer == normalized_acceptable:
-                    graded_answer['correct'] = True
-                    print(f"MATCH FOUND on Q{i}: '{user_answer}' == '{normalized_acceptable}'")
-                    break
-            
-            if not graded_answer['correct']:
-                print(f"NO MATCH on Q{i}: user='{user_answer}' vs acceptable={graded_answer['acceptable_answers']}")
-        
-        graded_answers.append(graded_answer)
-    
-    # Calculate score as percentage
-    if graded_answers:
-        correct_count = sum(1 for ans in graded_answers if ans.get('correct'))
-        score = int((correct_count / len(graded_answers)) * 100)
-    else:
-        score = 0
-    
-    return graded_answers, score
+    const handleCorrectAnswerChange = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      let correct = newQuestions[questionIndex].correct_answers || [];
+      if (correct.includes(optionIndex)) {
+        correct = correct.filter(idx => idx !== optionIndex);
+      } else {
+        correct = [...correct, optionIndex];
+      }
+      newQuestions[questionIndex].correct_answers = correct;
+      setQuestions(newQuestions);
+    };
+  const navigate = useNavigate();
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [theme, setTheme] = useState('General');
+  const [difficulty, setDifficulty] = useState('medium');
+  const [questions, setQuestions] = useState([
+    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-class ChallengeViewSet(viewsets.ModelViewSet):
-    queryset = Challenge.objects.all()
-    serializer_class = ChallengeSerializer
+  const handleQuestionChange = (index, field, value) => {
+    const newQuestions = [...questions];
+    if (field === null) {
+      // Replace entire question object
+      newQuestions[index] = value;
+    } else {
+      newQuestions[index][field] = value;
+    }
+    setQuestions(newQuestions);
+  };
 
-    @action(detail=False, methods=['post'])
-    def import_opentdb(self, request):
-        """
-        Import quizzes from Open Trivia DB via API.
-        Only allow if user is admin or a valid import token is provided.
-        Accepts: amount (int), category (int, optional), difficulty (str, optional)
-        """
-        import requests, html, random
-        # SECURITY: Require admin or secret token
-        IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
-        token = request.headers.get('X-Import-Token') or request.data.get('import_token')
-        if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
-            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+  const handleOptionChange = (questionIndex, optionIndex, value) => {
+    const newQuestions = [...questions];
+    newQuestions[questionIndex].options[optionIndex] = value;
+    setQuestions(newQuestions);
+  };
 
-        amount = int(request.data.get('amount', 10))
-        category = request.data.get('category')
-        difficulty = request.data.get('difficulty')
-        params = {'amount': amount, 'type': 'multiple'}
-        if category:
-            params['category'] = category
-        if difficulty:
-            params['difficulty'] = difficulty
-        resp = requests.get('https://opentdb.com/api.php', params=params)
-        data = resp.json()
-        if data.get('response_code') != 0:
-            return Response({'detail': 'Error fetching from Open Trivia DB.'}, status=status.HTTP_400_BAD_REQUEST)
+  const addQuestion = () => {
+    setQuestions([
+      ...questions,
+      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
+    ]);
+  };
 
-        questions = []
-        for i, q in enumerate(data['results']):
-            options = q['incorrect_answers'] + [q['correct_answer']]
-            options = [html.unescape(opt) for opt in options]
-            random.shuffle(options)
-            correct_index = options.index(html.unescape(q['correct_answer']))
-            questions.append({
-                'type': 'multiple_choice',
-                'question_text': html.unescape(q['question']),
-                'options': options,
-                'correct_answer': correct_index,
-                'question_id': f'opentdb_{i}_{random.randint(1000,9999)}'
-            })
+  const removeQuestion = (index) => {
+    if (questions.length > 1) {
+      const newQuestions = questions.filter((_, i) => i !== index);
+      setQuestions(newQuestions);
+    }
+  };
 
-        challenge_title = f'Open Trivia DB Import ({amount} questions)'
-        if category:
-            challenge_title += f' - Category {category}'
-        if difficulty:
-            challenge_title += f' - {difficulty.capitalize()}'
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
 
-        challenge = Challenge.objects.create(
-            title=challenge_title,
-            description='Imported from Open Trivia DB',
-            theme=data['results'][0].get('category', 'General') if data['results'] else 'General',
-            difficulty=difficulty or 'medium',
-            creator_uid='opentdb_import',
-            questions=questions
-        )
-        return Response({'created': ChallengeSerializer(challenge).data}, status=status.HTTP_201_CREATED)
+    const user = auth.currentUser;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
 
-    @action(detail=False, methods=['post'])
-    def import_quizzes(self, request):
-        """
-        Import one or more quizzes (challenges) via API.
-        Only allow if user is admin or a valid import token is provided.
-        Expects a list of challenge objects in request.data['quizzes'] or a single challenge object.
-        """
-        # SECURITY: Require admin or secret token
-        IMPORT_TOKEN = 'YOUR_SECRET_IMPORT_TOKEN'  # TODO: Set this securely, e.g., in env vars
-        token = request.headers.get('X-Import-Token') or request.data.get('import_token')
-        if not (request.user.is_staff if request.user and request.user.is_authenticated else False) and token != IMPORT_TOKEN:
-            return Response({'detail': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+    // Validation
+    if (questions.length === 0) {
+      setError('Please add at least one question');
+      return;
+    }
 
-        quizzes = request.data.get('quizzes')
-        if not quizzes:
-            # Allow single quiz import
-            quiz = request.data.get('quiz') or request.data
-            quizzes = [quiz]
-        created = []
-        errors = []
-        for quiz in quizzes:
-            serializer = ChallengeSerializer(data=quiz)
-            if serializer.is_valid():
-                serializer.save()
-                created.append(serializer.data)
-            else:
-                errors.append(serializer.errors)
-        return Response({'created': created, 'errors': errors}, status=status.HTTP_201_CREATED if created else status.HTTP_400_BAD_REQUEST)
-    
-class UserProfileViewSet(viewsets.ModelViewSet):
-    queryset = UserProfile.objects.all()
-    serializer_class = UserProfileSerializer
-    lookup_field = 'firebase_uid'
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      if (!q.question_text.trim()) {
+        setError(`Question ${i + 1} is empty`);
+        return;
+      }
+      if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
+        setError(`Question ${i + 1} has empty options`);
+        return;
+      }
+      if (q.type === 'short_answer' && (!q.acceptable_answers || q.acceptable_answers.length === 0 || q.acceptable_answers.every(a => !a.trim()))) {
+        setError(`Question ${i + 1} must have at least one acceptable answer`);
+        return;
+      }
+    }
 
-class AttemptViewSet(viewsets.ModelViewSet):
-    queryset = Attempt.objects.all()
-    serializer_class = AttemptSerializer
-    
-    def create(self, request, *args, **kwargs):
-        """Create attempt and calculate XP with server-side grading"""
-        challenge_id = request.data.get('challenge')
-        challenge = Challenge.objects.get(id=challenge_id)
-        
-        submitted_answers = request.data.get('submitted_answers') or request.data.get('answers', [])
-        
-        # Grade the answers
-        graded_answers, score = grade_answers(challenge, submitted_answers)
-        
-        request_data = request.data.copy()
-        request_data['submitted_answers'] = submitted_answers
-        request_data['answers'] = graded_answers
-        request_data['score'] = score
+    setLoading(true);
 
-        serializer = self.get_serializer(data=request_data)
-        serializer.is_valid(raise_exception=True)
-        attempt = serializer.save()
+    try {
+      const response = await axios.post(`${API_URL}/challenges/`, {
+        title,
+        description,
+        theme,
+        difficulty,
+        creator_uid: user.uid,
+        questions: questions.map(q => {
+          // Clean up acceptable_answers to remove empty strings
+          if (q.type === 'short_answer' && q.acceptable_answers) {
+            return {
+              ...q,
+              acceptable_answers: q.acceptable_answers.filter(a => a.trim())
+            };
+          }
+          return q;
+        })
+      });
 
-        # Get challenge for difficulty multiplier
-        difficulty_multipliers = {
-            'easy': 1.0,
-            'medium': 1.5,
-            'hard': 2.0
-        }
-        multiplier = difficulty_multipliers.get(challenge.difficulty, 1.0)
-        base_xp = int(attempt.score * multiplier)
+      navigate(`/play/${response.data.id}`);
+    } catch (err) {
+      console.error('Full error:', err);
+      console.error('Error response:', err.response?.data);
+      const errorMsg = err.response?.data?.detail || 
+                       err.response?.data?.error || 
+                       JSON.stringify(err.response?.data) || 
+                       err.message || 
+                       'Failed to create challenge';
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        # Check if first attempt at this challenge (excluding current)
-        user_uid = attempt.user_uid
-        previous_attempts = Attempt.objects.filter(
-            user_uid=user_uid,
-            challenge=challenge
-        ).exclude(id=attempt.id).exists()
-        first_time_bonus = 0 if previous_attempts else 50
-        perfect_bonus = 25 if attempt.score >= 100 else 0
+  return (
+    <div className="create-page">
+      <div className="create-header">
+        <h1>Create New Challenge</h1>
+      </div>
 
-        total_xp = base_xp + first_time_bonus + perfect_bonus
+      {error && <div className="error-message">{error}</div>}
 
-        # Update or create user profile
-        if user_uid:
-            user_profile, created = UserProfile.objects.get_or_create(
-                firebase_uid=user_uid,
-                defaults={
-                    'email': request.data.get('email', ''),
-                    'display_name': request.data.get('display_name', 'Anonymous')
-                }
-            )
-            user_profile.total_xp += total_xp
-            user_profile.challenges_completed += 1
-            user_profile.save()
+      <form onSubmit={handleSubmit} className="create-form">
+        <div className="form-section">
+          <h2>Challenge Details</h2>
+          
+          <div className="form-group">
+            <label htmlFor="title">Title</label>
+            <input
+              type="text"
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+              placeholder="Give your challenge a catchy title"
+            />
+          </div>
 
-        # Prepare response (serializer.data would reflect saved Attempt)
-        data = serializer.data
-        data['xp_earned'] = total_xp
-        data['xp_breakdown'] = {
-            'base_xp': base_xp,
-            'difficulty_multiplier': multiplier,
-            'first_time_bonus': first_time_bonus,
-            'perfect_bonus': perfect_bonus,
-            'total_xp': total_xp
-        }
-        data['new_total_xp'] = user_profile.total_xp if user_uid else None
+          <div className="form-group">
+            <label htmlFor="description">Description</label>
+            <textarea
+              id="description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              required
+              placeholder="Describe what this challenge is about"
+              rows="3"
+            />
+          </div>
 
-        return Response(data, status=status.HTTP_201_CREATED)
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="theme">Theme</label>
+              <select
+                id="theme"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+              >
+                <option value="General">General</option>
+                <option value="Science">Science</option>
+                <option value="History">History</option>
+                <option value="Sports">Sports</option>
+                <option value="Entertainment">Entertainment</option>
+                <option value="Geography">Geography</option>
+                <option value="Technology">Technology</option>
+              </select>
+            </div>
 
-class MatchViewSet(viewsets.ModelViewSet):
-    queryset = Match.objects.all()
-    serializer_class = MatchSerializer
+            <div className="form-group">
+              <label htmlFor="difficulty">Difficulty</label>
+              <select
+                id="difficulty"
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+          </div>
+        </div>
 
-    def update(self, request, *args, **kwargs):
-        # When an attempt is submitted, update the match and check for winner
-        response = super().update(request, *args, **kwargs)
-        match = self.get_object()
-        if match.attempt1 and match.attempt2 and not match.winner:
-            winner = match.determine_winner()
-            if winner:
-                match.winner = winner
-                match.finished_at = timezone.now()
-                match.save()
-                # Bonus XP logic is in serializer
-        return response
+        <div className="form-section">
+          <div className="section-header">
+            <h2>Questions</h2>
+            <button type="button" onClick={addQuestion} className="btn btn-secondary">
+              Add Question
+            </button>
+          </div>
+
+          {questions.map((question, qIndex) => (
+            <div key={qIndex} className="question-block">
+              <div className="question-block-header">
+                <h3>Question {qIndex + 1}</h3>
+                {questions.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeQuestion(qIndex)}
+                    className="btn btn-danger"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Type</label>
+                <select
+                  value={question.type}
+                  onChange={e => {
+                    const value = e.target.value;
+                    let newQ;
+                    if (value === 'multiple_choice') {
+                      newQ = { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] };
+                    } else {
+                      newQ = { type: 'short_answer', question_text: '', acceptable_answers: [''] };
+                    }
+                    handleQuestionChange(qIndex, null, newQ);
+                  }}
+                >
+                  <option value="multiple_choice">Multiple Choice</option>
+                  <option value="short_answer">Short-Answer</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>Question Text</label>
+                <input
+                  type="text"
+                  value={question.question_text}
+                  onChange={e => handleQuestionChange(qIndex, 'question_text', e.target.value)}
+                  required
+                  placeholder="Enter your question"
+                />
+              </div>
+
+              {question.type === 'multiple_choice' ? (
+                <div className="options-grid">
+                  {question.options.map((option, oIndex) => (
+                    <div key={oIndex} className="option-input">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={Array.isArray(question.correct_answers) && question.correct_answers.includes(oIndex)}
+                          onChange={() => handleCorrectAnswerChange(qIndex, oIndex)}
+                        />
+                        Option {String.fromCharCode(65 + oIndex)}
+                      </label>
+                      <input
+                        type="text"
+                        value={option}
+                        onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)}
+                        required
+                        placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
+                      />
+                      {question.options.length > 2 && (
+                        <button type="button" className="btn btn-danger btn-sm" onClick={() => removeOption(qIndex, oIndex)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => addOption(qIndex)}>
+                    + Add Option
+                  </button>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>Acceptable Answers (comma separated)</label>
+                  <input
+                    type="text"
+                    value={question.acceptable_answers ? question.acceptable_answers.join(', ') : ''}
+                    onChange={e => handleQuestionChange(qIndex, 'acceptable_answers', e.target.value.split(',').map(s => s.trim()))}
+                    required
+                    placeholder="e.g. answer1, answer2"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <button type="submit" className="btn btn-primary btn-large" disabled={loading}>
+          {loading ? 'Creating Challenge...' : 'Create Challenge'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default Create;
