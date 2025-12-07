@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
+import { auth } from '../firebase';
+import { challengeApi } from '../services/api';
 import "./Browse.css";
 
 
 const API_URL = 'https://quizquest-production.up.railway.app/api';
+
 
 function Browse() {
   const [challenges, setChallenges] = useState([]);
@@ -12,6 +15,9 @@ function Browse() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+
+  const currentUser = auth.currentUser;
 
   useEffect(() => {
     fetchChallenges();
@@ -26,6 +32,20 @@ function Browse() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this quiz? This action cannot be undone.')) return;
+    setDeletingId(id);
+    try {
+      await challengeApi.delete(id);
+      setChallenges((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      setError('Failed to delete quiz');
+      console.error(err);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -81,34 +101,47 @@ function Browse() {
         {filteredChallenges.length === 0 ? (
           <p className="no-challenges">No challenges found.</p>
         ) : (
-          filteredChallenges.map((challenge) => (
-            <div key={challenge.id} className="challenge-card">
-              <div className="challenge-header">
-                <h3>{challenge.title}</h3>
-                <span className={`difficulty-badge ${challenge.difficulty}`}>
-                  {challenge.difficulty}
-                </span>
+          filteredChallenges.map((challenge) => {
+            const isUserQuiz = currentUser && challenge.creator_uid === currentUser.uid && !challenge.creator_uid.startsWith('opentdb');
+            return (
+              <div key={challenge.id} className="challenge-card">
+                <div className="challenge-header">
+                  <h3>{challenge.title}</h3>
+                  <span className={`difficulty-badge ${challenge.difficulty}`}>
+                    {challenge.difficulty}
+                  </span>
+                </div>
+
+                <p className="challenge-description">{challenge.description}</p>
+
+                <div className="challenge-meta">
+                  <span className="theme">{challenge.theme}</span>
+                  <span className="questions">
+                    {challenge.questions?.length || 0} questions
+                  </span>
+                </div>
+
+                <div className="challenge-stats">
+                  <span>⭐ {challenge.average_rating?.toFixed(1) || 'N/A'}</span>
+                  <span>👥 {challenge.total_attempts || 0} attempts</span>
+                </div>
+
+                <Link to={`/play/${challenge.id}`} className="btn btn-primary">
+                  Start Challenge
+                </Link>
+
+                {isUserQuiz && (
+                  <button
+                    className="btn btn-danger"
+                    disabled={deletingId === challenge.id}
+                    onClick={() => handleDelete(challenge.id)}
+                  >
+                    {deletingId === challenge.id ? 'Deleting...' : 'Delete'}
+                  </button>
+                )}
               </div>
-
-              <p className="challenge-description">{challenge.description}</p>
-
-              <div className="challenge-meta">
-                <span className="theme">{challenge.theme}</span>
-                <span className="questions">
-                  {challenge.questions?.length || 0} questions
-                </span>
-              </div>
-
-              <div className="challenge-stats">
-                <span>⭐ {challenge.average_rating?.toFixed(1) || 'N/A'}</span>
-                <span>👥 {challenge.total_attempts || 0} attempts</span>
-              </div>
-
-              <Link to={`/play/${challenge.id}`} className="btn btn-primary">
-                Start Challenge
-              </Link>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

@@ -6,13 +6,44 @@ import axios from 'axios';
 const API_URL = 'https://quizquest-production.up.railway.app/api';
 
 function Create() {
+    const addOption = (questionIndex) => {
+      const newQuestions = [...questions];
+      newQuestions[questionIndex].options.push('');
+      setQuestions(newQuestions);
+    };
+
+    const removeOption = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      if (newQuestions[questionIndex].options.length > 2) {
+        newQuestions[questionIndex].options.splice(optionIndex, 1);
+        // Remove the index from correct_answers if present, and shift others down
+        if (Array.isArray(newQuestions[questionIndex].correct_answers)) {
+          newQuestions[questionIndex].correct_answers = newQuestions[questionIndex].correct_answers
+            .filter(idx => idx !== optionIndex)
+            .map(idx => (idx > optionIndex ? idx - 1 : idx));
+        }
+        setQuestions(newQuestions);
+      }
+    };
+
+    const handleCorrectAnswerChange = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      let correct = newQuestions[questionIndex].correct_answers || [];
+      if (correct.includes(optionIndex)) {
+        correct = correct.filter(idx => idx !== optionIndex);
+      } else {
+        correct = [...correct, optionIndex];
+      }
+      newQuestions[questionIndex].correct_answers = correct;
+      setQuestions(newQuestions);
+    };
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [theme, setTheme] = useState('General');
   const [difficulty, setDifficulty] = useState('medium');
   const [questions, setQuestions] = useState([
-    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +68,7 @@ function Create() {
   const addQuestion = () => {
     setQuestions([
       ...questions,
-      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
     ]);
   };
 
@@ -216,7 +247,7 @@ function Create() {
                     const value = e.target.value;
                     let newQ;
                     if (value === 'multiple_choice') {
-                      newQ = { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answer: 0 };
+                      newQ = { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] };
                     } else {
                       newQ = { type: 'short_answer', question_text: '', acceptable_answers: [''] };
                     }
@@ -245,10 +276,9 @@ function Create() {
                     <div key={oIndex} className="option-input">
                       <label>
                         <input
-                          type="radio"
-                          name={`correct-${qIndex}`}
-                          checked={question.correct_answer === oIndex}
-                          onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
+                          type="checkbox"
+                          checked={Array.isArray(question.correct_answers) && question.correct_answers.includes(oIndex)}
+                          onChange={() => handleCorrectAnswerChange(qIndex, oIndex)}
                         />
                         Option {String.fromCharCode(65 + oIndex)}
                       </label>
@@ -259,8 +289,16 @@ function Create() {
                         required
                         placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
                       />
+                      {question.options.length > 2 && (
+                        <button type="button" className="btn btn-danger btn-sm" onClick={() => removeOption(qIndex, oIndex)}>
+                          Remove
+                        </button>
+                      )}
                     </div>
                   ))}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => addOption(qIndex)}>
+                    + Add Option
+                  </button>
                 </div>
               ) : (
                 <div className="form-group">
