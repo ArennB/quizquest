@@ -1,14 +1,56 @@
+
+
 import { useAuth } from "../context/AuthContext";
+import { useEffect, useState } from "react";
+import { userApi } from "../services/api";
+import Leaderboard from "./Leaderboard";
 
 export default function Profile() {
   const { currentUser } = useAuth();
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Temporary placeholder data (replace later with backend)
-  const level = 1;
-  const xp = 40;
-  const nextLevelXp = 100;
+  useEffect(() => {
+    async function fetchUser() {
+      if (!currentUser?.uid) return;
+      try {
+        const response = await userApi.getById(currentUser.uid);
+        setUserData(response.data);
+      } catch (err) {
+        setError("Failed to load user data");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchUser();
+  }, [currentUser]);
 
-  const xpPercent = (xp / nextLevelXp) * 100;
+  // Level calculation (example: every 1000 XP = new level)
+  const totalXp = userData?.total_xp || 0;
+  const level = Math.floor(totalXp / 1000) + 1;
+  const nextLevelXp = level * 1000;
+  const xpPercent = ((totalXp % 1000) / 1000) * 100;
+
+
+  if (loading) return <div>Loading profile...</div>;
+
+  // If user not found (404), show new user message and leaderboard
+  if (error) {
+    return (
+      <div style={{ padding: "2rem", maxWidth: "900px", margin: "0 auto" }}>
+        <h1>Welcome, new QuizQuest user!</h1>
+        <div className="info-message" style={{ margin: "1.5rem 0", background: "#f3f4f6", padding: "1.5rem", borderRadius: "10px" }}>
+          <p>
+            You don't have any profile data yet. Start playing quizzes to earn XP, unlock badges, and appear on the leaderboard!
+          </p>
+        </div>
+        <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
+          <Leaderboard />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: "2rem", maxWidth: "600px", margin: "0 auto" }}>
@@ -45,7 +87,7 @@ export default function Profile() {
           ></div>
         </div>
 
-        <p>{xp} / {nextLevelXp} XP</p>
+        <p>{totalXp} / {nextLevelXp} XP</p>
       </div>
 
       {/* BADGES */}

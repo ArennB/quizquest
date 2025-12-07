@@ -284,10 +284,11 @@ function Create() {
                       </label>
                       <input
                         type="text"
+                        className="option-input"
                         value={option}
                         onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)}
                         required
-                        placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
+                        placeholder="Insert option here"
                       />
                       {question.options.length > 2 && (
                         <button type="button" className="btn btn-danger btn-sm" onClick={() => removeOption(qIndex, oIndex)}>
