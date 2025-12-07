@@ -1,3 +1,4 @@
+import ResetPassword from './pages/ResetPassword';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
@@ -29,6 +30,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/browse" element={<Browse />} />
 
+              <Route path="/reset-password" element={<ResetPassword />} />
               {/* Redirect logged-in users AWAY from login/signup */}
               <Route 
                 path="/login" 
@@ -94,7 +96,7 @@ function App() {
 }
 
 function RedirectIfLoggedIn({ children }) {
-  const { currentUser } = useAuth();    // 🔥 FIXED
+  const { currentUser } = useAuth();
 
   if (currentUser) {
     return <Navigate to="/browse" replace />;
@@ -104,5 +106,3 @@ function RedirectIfLoggedIn({ children }) {
 }
 
 export default App;
-
-

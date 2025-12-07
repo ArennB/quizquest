@@ -94,28 +94,32 @@ function Login() {
             />
           </div>
 
-          <button
-            type="button"
-            className="forgot-password"
-            onClick={() => navigate("/reset-password")}
-          >
-            Forgot password?
-          </button>
-          
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
+          <div className="login-actions">
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
+            <button
+              type="button"
+              className="forgot-password"
+              onClick={() => navigate("/reset-password")}
+            >
+              Forgot password?
+            </button>
+          </div>
         </form>
 
         <div className="divider">OR</div>
 
-        <button 
-          onClick={handleGoogleLogin} 
-          className="btn btn-google"
-          disabled={loading}
-        >
-          Continue with Google
-        </button>
+
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+          <button 
+            onClick={handleGoogleLogin} 
+            className="btn btn-google"
+            disabled={loading}
+          >
+            Continue with Google
+          </button>
+        </div>
 
         <p className="auth-switch">
           Don't have an account? <Link to="/signup">Sign up</Link>

@@ -3,23 +3,59 @@ import { useNavigate } from 'react-router-dom';
 import { auth } from '../firebase';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'https://quizquest-production.up.railway.app/api';
 
 function Create() {
+    const addOption = (questionIndex) => {
+      const newQuestions = [...questions];
+      newQuestions[questionIndex].options.push('');
+      setQuestions(newQuestions);
+    };
+
+    const removeOption = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      if (newQuestions[questionIndex].options.length > 2) {
+        newQuestions[questionIndex].options.splice(optionIndex, 1);
+        // Remove the index from correct_answers if present, and shift others down
+        if (Array.isArray(newQuestions[questionIndex].correct_answers)) {
+          newQuestions[questionIndex].correct_answers = newQuestions[questionIndex].correct_answers
+            .filter(idx => idx !== optionIndex)
+            .map(idx => (idx > optionIndex ? idx - 1 : idx));
+        }
+        setQuestions(newQuestions);
+      }
+    };
+
+    const handleCorrectAnswerChange = (questionIndex, optionIndex) => {
+      const newQuestions = [...questions];
+      let correct = newQuestions[questionIndex].correct_answers || [];
+      if (correct.includes(optionIndex)) {
+        correct = correct.filter(idx => idx !== optionIndex);
+      } else {
+        correct = [...correct, optionIndex];
+      }
+      newQuestions[questionIndex].correct_answers = correct;
+      setQuestions(newQuestions);
+    };
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [theme, setTheme] = useState('General');
   const [difficulty, setDifficulty] = useState('medium');
   const [questions, setQuestions] = useState([
-    { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+    { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleQuestionChange = (index, field, value) => {
     const newQuestions = [...questions];
-    newQuestions[index][field] = value;
+    if (field === null) {
+      // Replace entire question object
+      newQuestions[index] = value;
+    } else {
+      newQuestions[index][field] = value;
+    }
     setQuestions(newQuestions);
   };
 
@@ -32,7 +68,7 @@ function Create() {
   const addQuestion = () => {
     setQuestions([
       ...questions,
-      { question_text: '', options: ['', '', '', ''], correct_answer: 0 }
+      { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] }
     ]);
   };
 
@@ -65,8 +101,12 @@ function Create() {
         setError(`Question ${i + 1} is empty`);
         return;
       }
-      if (q.options.some(opt => !opt.trim())) {
+      if (q.type === 'multiple_choice' && q.options.some(opt => !opt.trim())) {
         setError(`Question ${i + 1} has empty options`);
+        return;
+      }
+      if (q.type === 'short_answer' && (!q.acceptable_answers || q.acceptable_answers.length === 0 || q.acceptable_answers.every(a => !a.trim()))) {
+        setError(`Question ${i + 1} must have at least one acceptable answer`);
         return;
       }
     }
@@ -80,7 +120,16 @@ function Create() {
         theme,
         difficulty,
         creator_uid: user.uid,
-        questions
+        questions: questions.map(q => {
+          // Clean up acceptable_answers to remove empty strings
+          if (q.type === 'short_answer' && q.acceptable_answers) {
+            return {
+              ...q,
+              acceptable_answers: q.acceptable_answers.filter(a => a.trim())
+            };
+          }
+          return q;
+        })
       });
 
       navigate(`/play/${response.data.id}`);
@@ -191,38 +240,79 @@ function Create() {
               </div>
 
               <div className="form-group">
+                <label>Type</label>
+                <select
+                  value={question.type}
+                  onChange={e => {
+                    const value = e.target.value;
+                    let newQ;
+                    if (value === 'multiple_choice') {
+                      newQ = { type: 'multiple_choice', question_text: '', options: ['', '', '', ''], correct_answers: [0] };
+                    } else {
+                      newQ = { type: 'short_answer', question_text: '', acceptable_answers: [''] };
+                    }
+                    handleQuestionChange(qIndex, null, newQ);
+                  }}
+                >
+                  <option value="multiple_choice">Multiple Choice</option>
+                  <option value="short_answer">Short-Answer</option>
+                </select>
+              </div>
+
+              <div className="form-group">
                 <label>Question Text</label>
                 <input
                   type="text"
                   value={question.question_text}
-                  onChange={(e) => handleQuestionChange(qIndex, 'question_text', e.target.value)}
+                  onChange={e => handleQuestionChange(qIndex, 'question_text', e.target.value)}
                   required
                   placeholder="Enter your question"
                 />
               </div>
 
-              <div className="options-grid">
-                {question.options.map((option, oIndex) => (
-                  <div key={oIndex} className="option-input">
-                    <label>
+              {question.type === 'multiple_choice' ? (
+                <div className="options-grid">
+                  {question.options.map((option, oIndex) => (
+                    <div key={oIndex} className="option-input">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={Array.isArray(question.correct_answers) && question.correct_answers.includes(oIndex)}
+                          onChange={() => handleCorrectAnswerChange(qIndex, oIndex)}
+                        />
+                        Option {String.fromCharCode(65 + oIndex)}
+                      </label>
                       <input
-                        type="radio"
-                        name={`correct-${qIndex}`}
-                        checked={question.correct_answer === oIndex}
-                        onChange={() => handleQuestionChange(qIndex, 'correct_answer', oIndex)}
+                        type="text"
+                        className="option-input"
+                        value={option}
+                        onChange={e => handleOptionChange(qIndex, oIndex, e.target.value)}
+                        required
+                        placeholder="Insert option here"
                       />
-                      Option {String.fromCharCode(65 + oIndex)}
-                    </label>
-                    <input
-                      type="text"
-                      value={option}
-                      onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
-                      required
-                      placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
-                    />
-                  </div>
-                ))}
-              </div>
+                      {question.options.length > 2 && (
+                        <button type="button" className="btn btn-danger btn-sm" onClick={() => removeOption(qIndex, oIndex)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => addOption(qIndex)}>
+                    + Add Option
+                  </button>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>Acceptable Answers (comma separated)</label>
+                  <input
+                    type="text"
+                    value={question.acceptable_answers ? question.acceptable_answers.join(', ') : ''}
+                    onChange={e => handleQuestionChange(qIndex, 'acceptable_answers', e.target.value.split(',').map(s => s.trim()))}
+                    required
+                    placeholder="e.g. answer1, answer2"
+                  />
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Challenge, UserProfile, Attempt
+from django.utils import timezone
+from .models import Challenge, UserProfile, Attempt, Match
 
 class ChallengeSerializer(serializers.ModelSerializer):
     total_attempts = serializers.SerializerMethodField()
@@ -49,3 +50,41 @@ class AttemptSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attempt
         fields = '__all__'
+        read_only_fields = ["completed_at"]
+
+    def create(self, validated_data):
+        answers = validated_data.get("answers", [])
+        
+        # If score is already provided (from grading), use it; otherwise calculate
+        if "score" not in validated_data or validated_data["score"] is None:
+            score = sum(1 for ans in answers if ans.get("correct") is True)
+            # Convert count to percentage
+            if answers:
+                score = int((score / len(answers)) * 100)
+            validated_data["score"] = score
+        
+        # If total_time is not provided, calculate from answers
+        if "total_time" not in validated_data or validated_data["total_time"] is None:
+            total_time = sum(ans.get("time", 0) for ans in answers)
+            validated_data["total_time"] = total_time
+
+        return super().create(validated_data)
+
+class MatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Match
+        fields = '__all__'
+
+    def update(self, instance, validated_data):
+        # When both attempts are present, determine winner and award XP
+        instance = super().update(instance, validated_data)
+        if instance.attempt1 and instance.attempt2 and not instance.winner:
+            winner = instance.determine_winner()
+            if winner:
+                instance.winner = winner
+                instance.finished_at = timezone.now()
+                instance.save()
+                # Award bonus XP to winner
+                winner.total_xp += 50  # or any bonus value
+                winner.save()
+        return instance
