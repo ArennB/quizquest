@@ -275,8 +275,23 @@ function Play() {
 							<div style={{ display: 'grid', gap: '1.5rem', marginTop: '1rem' }}>
 								{challenge.questions.map((question, idx) => {
 									const userAnswer = answers[idx];
-									const correctAnswer = question.correct_answer;
-									const isCorrect = userAnswer === correctAnswer;
+									
+									// Determine correctness based on question type
+									let isCorrect = false;
+									if (question.type === 'short_answer') {
+										const userAns = (userAnswer || '').toString().trim().toLowerCase();
+										const acceptable = (question.acceptable_answers || []).map(a => a.trim().toLowerCase());
+										isCorrect = acceptable.includes(userAns);
+									} else if (question.type === 'multiple_choice' && Array.isArray(question.correct_answers) && question.correct_answers.length > 1) {
+										// Multi-answer
+										const userAns = Array.isArray(userAnswer) ? userAnswer.slice().sort() : [];
+										const correctAns = question.correct_answers.slice().sort();
+										isCorrect = userAns.length === correctAns.length && userAns.every((v, i) => v === correctAns[i]);
+									} else {
+										// Single answer
+										const correctAnswer = question.correct_answer !== undefined ? question.correct_answer : (Array.isArray(question.correct_answers) && question.correct_answers.length === 1 ? question.correct_answers[0] : null);
+										isCorrect = userAnswer === correctAnswer;
+									}
 
 									return (
 										<div key={idx} className={`review-question-card ${isCorrect ? 'correct' : 'incorrect'}`} style={{
@@ -296,44 +311,83 @@ function Play() {
 												</span>
 											</div>
 											<div style={{ fontSize: '1.05rem', fontWeight: 500 }}>{question.question_text}</div>
-											<div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-												{question.options.map((option, optIdx) => {
-													const isUserAnswer = userAnswer === optIdx;
-													const isCorrectAnswer = correctAnswer === optIdx;
-													let className = 'review-answer';
-													if (isUserAnswer && isCorrectAnswer) {
-														className += ' correct-answer';
-													} else if (isUserAnswer && !isCorrectAnswer) {
-														className += ' your-wrong-answer';
-													} else if (isCorrectAnswer) {
-														className += ' correct-answer';
-													}
-													return (
-														<div key={optIdx} className={className} style={{
-															background: isUserAnswer ? (isCorrectAnswer ? '#bbf7d0' : '#fee2e2') : isCorrectAnswer ? '#dbeafe' : '#f3f4f6',
+											
+											{question.type === 'short_answer' ? (
+												<div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+													<div style={{
+														background: isCorrect ? '#bbf7d0' : '#fee2e2',
+														borderRadius: '8px',
+														padding: '0.75rem 1rem',
+													}}>
+														<div style={{ fontWeight: 600, marginBottom: '0.25rem', color: '#666' }}>Your Answer:</div>
+														<div style={{ fontSize: '1rem' }}>{userAnswer || '(No answer provided)'}</div>
+													</div>
+													{!isCorrect && (
+														<div style={{
+															background: '#dbeafe',
 															borderRadius: '8px',
-															padding: '0.5rem 1rem',
-															display: 'flex',
-															alignItems: 'center',
-															gap: '0.5rem',
-															fontWeight: isUserAnswer || isCorrectAnswer ? 600 : 400,
+															padding: '0.75rem 1rem',
 														}}>
-															<span style={{ fontWeight: 600 }}>{String.fromCharCode(65 + optIdx)}.</span>
-															<span>{option}</span>
-															{isUserAnswer && (
-																<span style={{ marginLeft: 'auto', color: isCorrectAnswer ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
-																	Your Answer
-																</span>
-															)}
-															{isCorrectAnswer && !isUserAnswer && (
-																<span style={{ marginLeft: 'auto', color: '#2563eb', fontWeight: 600 }}>
-																	Correct Answer
-																</span>
-															)}
+															<div style={{ fontWeight: 600, marginBottom: '0.25rem', color: '#666' }}>Acceptable Answers:</div>
+															<div style={{ fontSize: '1rem' }}>
+																{(question.acceptable_answers || []).join(', ')}
+															</div>
 														</div>
-													);
-												})}
-											</div>
+													)}
+												</div>
+											) : (
+												<div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+													{question.options.map((option, optIdx) => {
+														let isUserAnswer = false;
+														let isCorrectAnswer = false;
+														
+														if (Array.isArray(question.correct_answers) && question.correct_answers.length > 1) {
+															// Multi-answer
+															isUserAnswer = Array.isArray(userAnswer) && userAnswer.includes(optIdx);
+															isCorrectAnswer = question.correct_answers.includes(optIdx);
+														} else {
+															// Single answer
+															isUserAnswer = userAnswer === optIdx;
+															const correctAnswer = question.correct_answer !== undefined ? question.correct_answer : (Array.isArray(question.correct_answers) && question.correct_answers.length === 1 ? question.correct_answers[0] : null);
+															isCorrectAnswer = correctAnswer === optIdx;
+														}
+														
+														let className = 'review-answer';
+														if (isUserAnswer && isCorrectAnswer) {
+															className += ' correct-answer';
+														} else if (isUserAnswer && !isCorrectAnswer) {
+															className += ' your-wrong-answer';
+														} else if (isCorrectAnswer) {
+															className += ' correct-answer';
+														}
+														
+														return (
+															<div key={optIdx} className={className} style={{
+																background: isUserAnswer ? (isCorrectAnswer ? '#bbf7d0' : '#fee2e2') : isCorrectAnswer ? '#dbeafe' : '#f3f4f6',
+																borderRadius: '8px',
+																padding: '0.5rem 1rem',
+																display: 'flex',
+																alignItems: 'center',
+																gap: '0.5rem',
+																fontWeight: isUserAnswer || isCorrectAnswer ? 600 : 400,
+															}}>
+																<span style={{ fontWeight: 600 }}>{String.fromCharCode(65 + optIdx)}.</span>
+																<span>{option}</span>
+																{isUserAnswer && (
+																	<span style={{ marginLeft: 'auto', color: isCorrectAnswer ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+																		Your Answer
+																	</span>
+																)}
+																{isCorrectAnswer && !isUserAnswer && (
+																	<span style={{ marginLeft: 'auto', color: '#2563eb', fontWeight: 600 }}>
+																		Correct Answer
+																	</span>
+																)}
+															</div>
+														);
+													})}
+												</div>
+											)}
 										</div>
 									);
 								})}
