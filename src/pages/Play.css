@@ -269,6 +269,23 @@
   gap: 15px;
 }
 
+.short-answer-input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #333;
+  background: #fff;
+  color: #111;
+  font-size: 1.1rem;
+  margin-top: 10px;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+.short-answer-input::placeholder {
+  color: #111;
+  opacity: 1;
+}
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
