@@ -50,7 +50,6 @@ function Login() {
   const handleGoogleLogin = async () => {
     setError('');
     setLoading(true);
-
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
@@ -61,6 +60,7 @@ function Login() {
       setLoading(false);
     }
   };
+
 
   return (
     <div className="auth-page">
@@ -109,6 +109,7 @@ function Login() {
         </form>
 
         <div className="divider">OR</div>
+
 
 
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>

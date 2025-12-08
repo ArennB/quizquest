@@ -113,20 +113,21 @@ function Signup() {
             />
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={loading}>
-            {loading ? 'Creating account...' : 'Sign Up'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', marginTop: '1.5rem' }}>
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Creating account...' : 'Sign Up'}
+            </button>
+            <div className="divider" style={{ width: '100%', textAlign: 'center' }}>OR</div>
+            <button 
+              onClick={handleGoogleSignup}
+              className="btn btn-google"
+              disabled={loading}
+              style={{ width: '100%' }}
+            >
+              Continue with Google
+            </button>
+          </div>
         </form>
-
-        <div className="divider">OR</div>
-
-        <button 
-          onClick={handleGoogleSignup}
-          className="btn btn-google"
-          disabled={loading}
-        >
-          Continue with Google
-        </button>
 
         <p className="auth-switch">
           Already have an account? <Link to="/login">Login</Link>

@@ -47,16 +47,15 @@ class Command(BaseCommand):
                 'question_id': f'opentdb_{i}_{random.randint(1000,9999)}'
             })
 
-        challenge_title = f'Open Trivia DB Import ({params["amount"]} questions)'
-        if 'category' in options and options['category']:
-            challenge_title += f' - Category {options["category"]}'
-        if 'difficulty' in options and options['difficulty']:
-            challenge_title += f' - {options["difficulty"].capitalize()}'
+        # Use category from first question if available
+        category = questions[0].get('question_text', '')
+        category_name = q.get('category', 'General') if 'category' in q else 'General'
+        challenge_title = f'{category_name} Quiz'
 
         challenge = Challenge.objects.create(
             title=challenge_title,
             description='Imported from Open Trivia DB',
-            theme=q.get('category', 'General'),
+            theme=category_name,
             difficulty=q.get('difficulty', 'medium'),
             creator_uid='opentdb_import',
             questions=questions

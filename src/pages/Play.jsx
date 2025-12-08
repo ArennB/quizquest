@@ -270,55 +270,75 @@ function Play() {
           </div>
 
           {showReview && (
-            <div className="review-section">
-              <h3>Question Review</h3>
-              {challenge.questions.map((question, idx) => {
-                const userAnswer = answers[idx];
-                const correctAnswer = question.correct_answer;
-                const isCorrect = userAnswer === correctAnswer;
+						<div className="review-section">
+							<h3>Question Review</h3>
+							<div style={{ display: 'grid', gap: '1.5rem', marginTop: '1rem' }}>
+								{challenge.questions.map((question, idx) => {
+									const userAnswer = answers[idx];
+									const correctAnswer = question.correct_answer;
+									const isCorrect = userAnswer === correctAnswer;
 
-                return (
-                  <div key={idx} className={`review-question ${isCorrect ? 'correct' : 'incorrect'}`}>
-                    <div className="review-question-header">
-                      <span className="review-question-number">Question {idx + 1}</span>
-                      <span className={`review-status ${isCorrect ? 'correct' : 'incorrect'}`}>
-                        {isCorrect ? '✓ Correct' : '✗ Incorrect'}
-                      </span>
-                    </div>
-                    <div className="review-question-text">{question.question_text}</div>
-                    <div className="review-answers">
-                      {question.options.map((option, optIdx) => {
-                        const isUserAnswer = userAnswer === optIdx;
-                        const isCorrectAnswer = correctAnswer === optIdx;
-                        
-                        let className = 'review-answer';
-                        if (isUserAnswer && isCorrectAnswer) {
-                          className += ' correct-answer';
-                        } else if (isUserAnswer && !isCorrectAnswer) {
-                          className += ' your-wrong-answer';
-                        } else if (isCorrectAnswer) {
-                          className += ' correct-answer';
-                        }
-
-                        return (
-                          <div key={optIdx} className={className}>
-                            {isUserAnswer && (
-                              <span className="review-answer-label your">Your Answer</span>
-                            )}
-                            {isCorrectAnswer && !isUserAnswer && (
-                              <span className="review-answer-label correct">Correct Answer</span>
-                            )}
-                            <span className="review-answer-text">
-                              {String.fromCharCode(65 + optIdx)}. {option}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+									return (
+										<div key={idx} className={`review-question-card ${isCorrect ? 'correct' : 'incorrect'}`} style={{
+											background: isCorrect ? '#e6ffed' : '#fff1f0',
+											border: `2px solid ${isCorrect ? '#22c55e' : '#ef4444'}`,
+											borderRadius: '12px',
+											boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+											padding: '1.5rem',
+											display: 'flex',
+											flexDirection: 'column',
+											gap: '0.75rem',
+										}}>
+											<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+												<span style={{ fontWeight: 600, fontSize: '1.1rem' }}>Question {idx + 1}</span>
+												<span style={{ fontWeight: 600, color: isCorrect ? '#22c55e' : '#ef4444' }}>
+													{isCorrect ? '✓ Correct' : '✗ Incorrect'}
+												</span>
+											</div>
+											<div style={{ fontSize: '1.05rem', fontWeight: 500 }}>{question.question_text}</div>
+											<div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+												{question.options.map((option, optIdx) => {
+													const isUserAnswer = userAnswer === optIdx;
+													const isCorrectAnswer = correctAnswer === optIdx;
+													let className = 'review-answer';
+													if (isUserAnswer && isCorrectAnswer) {
+														className += ' correct-answer';
+													} else if (isUserAnswer && !isCorrectAnswer) {
+														className += ' your-wrong-answer';
+													} else if (isCorrectAnswer) {
+														className += ' correct-answer';
+													}
+													return (
+														<div key={optIdx} className={className} style={{
+															background: isUserAnswer ? (isCorrectAnswer ? '#bbf7d0' : '#fee2e2') : isCorrectAnswer ? '#dbeafe' : '#f3f4f6',
+															borderRadius: '8px',
+															padding: '0.5rem 1rem',
+															display: 'flex',
+															alignItems: 'center',
+															gap: '0.5rem',
+															fontWeight: isUserAnswer || isCorrectAnswer ? 600 : 400,
+														}}>
+															<span style={{ fontWeight: 600 }}>{String.fromCharCode(65 + optIdx)}.</span>
+															<span>{option}</span>
+															{isUserAnswer && (
+																<span style={{ marginLeft: 'auto', color: isCorrectAnswer ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
+																	Your Answer
+																</span>
+															)}
+															{isCorrectAnswer && !isUserAnswer && (
+																<span style={{ marginLeft: 'auto', color: '#2563eb', fontWeight: 600 }}>
+																	Correct Answer
+																</span>
+															)}
+														</div>
+													);
+												})}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						</div>
           )}
         </div>
       </div>
@@ -331,7 +351,7 @@ function Play() {
   const seconds = elapsedTime % 60;
 
   return (
-    <div className="play-page">
+	<div className="play-page">
       <div className="play-header">
         <div className="header-top">
           <h2>{challenge.title}</h2>
@@ -397,25 +417,34 @@ function Play() {
         )}
 
         <div className="navigation-buttons">
-          <button
-            onClick={handlePrevious}
-            className="btn btn-secondary"
-            disabled={currentQuestionIndex === 0}
-          >
-            Previous
-          </button>
-          <button
-            onClick={handleNext}
-            className="btn btn-primary"
-            disabled={
-              currentQuestion.type === 'short_answer' ? !shortAnswer.trim() :
-              (Array.isArray(currentQuestion.correct_answers) && currentQuestion.correct_answers.length > 1
-                ? !Array.isArray(selectedAnswer) || selectedAnswer.length === 0
-                : selectedAnswer === null)
-            }
-          >
-            {currentQuestionIndex === challenge.questions.length - 1 ? 'Submit' : 'Next'}
-          </button>
+					                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+					                      <button
+					                        onClick={handlePrevious}
+					                        className="btn btn-secondary"
+					                        disabled={currentQuestionIndex === 0}
+					                      >
+					                        Previous
+					                      </button>
+					                      <button
+					                        onClick={() => navigate('/browse')}
+					                        className="btn btn-danger"
+					                        style={{ margin: '0 auto', minWidth: '160px' }}
+					                      >
+					                        Leave Challenge
+					                      </button>
+					                      <button
+					                        onClick={handleNext}
+					                        className="btn btn-primary"
+					                        disabled={
+					                          currentQuestion.type === 'short_answer' ? !shortAnswer.trim() :
+					                          (Array.isArray(currentQuestion.correct_answers) && currentQuestion.correct_answers.length > 1
+					                            ? !Array.isArray(selectedAnswer) || selectedAnswer.length === 0
+					                            : selectedAnswer === null)
+					                        }
+					                      >
+					                        {currentQuestionIndex === challenge.questions.length - 1 ? 'Submit' : 'Next'}
+					                      </button>
+					                    </div>
         </div>
       </div>
     </div>
